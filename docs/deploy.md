@@ -34,6 +34,7 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 `railway.json` tells Railway to build the Dockerfile and health-check `/health`. The app reads `PORT` from Railway.
 
+0. **Install Railway's GitHub app for the repository** first: https://github.com/apps/railway-app/installations/new, pick the account, "Only select repositories", select the repo. Without this Railway can build from the repo once but never sees pushes, so nothing auto-deploys.
 1. **New project from GitHub.** Railway dashboard, **New Project**, **Deploy from GitHub repo**, pick `masterblaster14/Consensus`, branch `main`. It will start a build straight away; that first deploy fails on the health check because there is no database yet. That is expected.
 2. **Add Postgres with pgvector.** In the project canvas, **Create**, **Database**, **PostgreSQL**. Once it is up, open its **Data** tab (or connect with `psql` using the `DATABASE_PUBLIC_URL` variable) and run `CREATE EXTENSION IF NOT EXISTS vector;`. If that errors because the image lacks pgvector, delete it and instead **Create**, **Template**, search **pgvector** and deploy that template; it exposes the same `DATABASE_URL` variable.
 3. **Add Redis.** **Create**, **Database**, **Redis**.
