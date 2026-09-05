@@ -54,6 +54,17 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.get("/", tags=["ops"], include_in_schema=False)
+    async def root() -> dict:
+        return {
+            "service": "consensus",
+            "health": "/health",
+            "api_docs": "/docs",
+            "board": "/board?token=<api key or session token>&project=<project id>",
+            "mcp": "/mcp  (POST, Authorization: Bearer <api key>)",
+            "websocket": "/ws/projects/{project_id}?token=<token>",
+        }
+
     @app.get("/health", tags=["ops"])
     async def health() -> dict:
         db_ok = redis_ok = False
