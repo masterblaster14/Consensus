@@ -8,8 +8,13 @@ Markdown pages intended for the landing site. Each file is self-contained and ca
 | How it works | [how-it-works.md](how-it-works.md) | The mechanism: stance extraction, deterministic comparison, verdicts, rulings, memory |
 | Features | [features.md](features.md) | Feature list grouped by theme, landing-page ready |
 | Pricing | [pricing.md](pricing.md) | Proposed tiers and limits. **Numbers are a proposal; limits are not enforced by the backend yet.** |
+| Q&A | [qa.md](qa.md) | Every question judges, customers or engineers are likely to ask, with answers written to be said aloud |
+| Pitch briefing | [pitch.md](pitch.md) | Problem, solution, how it works, MCP, tech stack, novelty, honest state, Q&A, 60-second pitch |
+| Demo script | [demo-script.md](demo-script.md) | Presenter's script: what to show, what to say, fallbacks, reset |
+| Demo runbook | [demo-runbook.md](demo-runbook.md) | How to run the backend and demonstrate every integration without a frontend (built-in /board page, scripts) |
+| Backend reference | [backend-reference.md](backend-reference.md) | Developer reference: setup, layout, verdict internals, MCP tools, REST/WS contracts, auth, integrations |
 
-Developer-facing API reference (endpoints, schemas, MCP tools, WebSocket frames) lives in the top-level [README](../README.md).
+The top-level [README](../README.md) describes the product; the developer-facing reference is [backend-reference.md](backend-reference.md).
 
 Notes for whoever builds the pages:
 

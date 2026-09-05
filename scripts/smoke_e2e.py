@@ -97,7 +97,10 @@ async def main() -> int:
     print("\n2. Agent A declares on the project")
     t = time.perf_counter()
     a = await agent.call("declare_intent", agent_name=a_name, plan_text=PLAN_A, branch=f"smoke/{tag}-a", project_id=pid)
-    check(a["verdict"] == "proceed", f"verdict = {a['verdict']}", f"{a['duration_ms']} ms")
+    # On an empty project this is "proceed"; on the seeded demo project, memory about auth
+    # already exists, so "proceed_with_context" is the correct answer.
+    expected = ("proceed",) if not args.project else ("proceed", "proceed_with_context")
+    check(a["verdict"] in expected, f"verdict = {a['verdict']}", f"{a['duration_ms']} ms; context entries: {len(a['context'])}")
     check(a["clash"] is None, "no clash on a fresh plan")
     stance = (await rest.get(f"/api/claims/{a['claim_id']}")).json()["stance"]
     print(f"     concepts: {stance['concepts']}")
