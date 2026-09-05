@@ -47,15 +47,24 @@ class Principal:
     via: str  # "jwt" | "api_key"
     org_ids: list[uuid.UUID] = field(default_factory=list)
     admin_org_ids: list[uuid.UUID] = field(default_factory=list)
+    restricted_org_ids: list[uuid.UUID] = field(default_factory=list)  # read-only memberships
     api_key_id: uuid.UUID | None = None
     key_org_id: uuid.UUID | None = None
     key_project_id: uuid.UUID | None = None
 
     def is_member(self, org_id: uuid.UUID | None) -> bool:
+        """Read access. Restricted members are still members."""
         return org_id is not None and org_id in self.org_ids
 
+    def is_restricted(self, org_id: uuid.UUID | None) -> bool:
+        return org_id is not None and org_id in self.restricted_org_ids
+
+    def can_write(self, org_id: uuid.UUID | None) -> bool:
+        return self.is_member(org_id) and not self.is_restricted(org_id)
+
     def is_admin(self, org_id: uuid.UUID | None) -> bool:
-        return org_id is not None and org_id in self.admin_org_ids
+        """A restricted admin keeps read access but no admin powers until reinstated."""
+        return org_id is not None and org_id in self.admin_org_ids and org_id not in self.restricted_org_ids
 
 
 # Set by the MCP auth middleware for the duration of a tool call.
@@ -158,6 +167,7 @@ async def principal_for_user(db: AsyncSession, user: User, via: str) -> Principa
         via=via,
         org_ids=[m.org_id for m in ms],
         admin_org_ids=[m.org_id for m in ms if m.role == "admin"],
+        restricted_org_ids=[m.org_id for m in ms if m.status == "restricted"],
     )
 
 
@@ -210,6 +220,18 @@ async def require_project_access(db: AsyncSession, principal: Principal | None, 
     return project
 
 
+def check_write(principal: Principal | None, project: Project) -> None:
+    """Raise Forbidden when the caller may not change this project: the project is archived,
+    or the caller's membership in its organisation is restricted (read-only).
+
+    Call it on every write path (declare, write_memory, handoff, token events, task edits,
+    clash resolution). Reads are never gated by it."""
+    if project.archived_at is not None:
+        raise Forbidden("project is archived; restore it before declaring or writing")
+    if principal is not None and project.org_id is not None and principal.is_restricted(project.org_id):
+        raise Forbidden("your membership in this organisation is restricted to read-only")
+
+
 async def default_project_for(db: AsyncSession, principal: Principal | None) -> Project:
     """Where MCP tools land when no project_id is given."""
     settings = get_settings()
@@ -218,7 +240,9 @@ async def default_project_for(db: AsyncSession, principal: Principal | None) -> 
             return await require_project_access(db, principal, principal.key_project_id)
         org_ids = [principal.key_org_id] if principal.key_org_id else principal.org_ids
         projects = (
-            await db.execute(select(Project).where(Project.org_id.in_(org_ids)).order_by(Project.created_at))
+            await db.execute(
+                select(Project).where(Project.org_id.in_(org_ids), Project.archived_at.is_(None)).order_by(Project.created_at)
+            )
         ).scalars().all() if org_ids else []
         if len(projects) == 1:
             return projects[0]
@@ -233,7 +257,7 @@ async def default_project_for(db: AsyncSession, principal: Principal | None) -> 
         p = await db.get(Project, uuid.UUID(settings.default_project_id))
         if p is not None:
             return p
-    p = (await db.execute(select(Project).order_by(Project.created_at).limit(1))).scalar_one_or_none()
+    p = (await db.execute(select(Project).where(Project.archived_at.is_(None)).order_by(Project.created_at).limit(1))).scalar_one_or_none()
     if p is None:
         raise LookupError("no projects exist; create one or run scripts/seed_demo.py")
     return p

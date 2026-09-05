@@ -6,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import CommittingRoute
-from app.api.deps import get_project
+from app.api.deps import get_project, http_from_auth_error
+from app.core.auth import AuthError, Forbidden
 from app.core import memory as memory_core
 from app.db.models import MemoryEntry, Project
 from app.db.session import get_db
@@ -41,9 +42,12 @@ async def list_memory(
 @router.post("/projects/{project_id}/memory", response_model=WriteMemoryResult, status_code=201)
 async def write_memory_via_rest(body: WriteMemoryRequest, project: Project = Depends(get_project)) -> WriteMemoryResult:
     """REST mirror of the write_memory MCP tool."""
-    return await memory_core.write_memory(
-        agent_name=body.agent_name, type=body.type, content=body.content, concepts=body.concepts, project_id=project.id
-    )
+    try:
+        return await memory_core.write_memory(
+            agent_name=body.agent_name, type=body.type, content=body.content, concepts=body.concepts, project_id=project.id
+        )
+    except (AuthError, Forbidden) as e:
+        raise http_from_auth_error(e)
 
 
 @router.get("/projects/{project_id}/memory/query", response_model=QueryMemoryResult)

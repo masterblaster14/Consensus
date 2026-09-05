@@ -51,7 +51,7 @@ async def _me(db: AsyncSession, user: User) -> MeOut:
     return MeOut(
         user=UserOut.model_validate(user),
         memberships=[
-            MembershipOut(org_id=m.org_id, org_name=m.org.name, org_slug=m.org.slug, role=m.role, user_id=m.user_id, user_email=user.email, user_name=user.name)
+            MembershipOut(org_id=m.org_id, org_name=m.org.name, org_slug=m.org.slug, role=m.role, status=m.status, user_id=m.user_id, user_email=user.email, user_name=user.name)
             for m in ms
         ],
     )
@@ -145,9 +145,11 @@ async def magic_link_request(body: MagicLinkRequest, db: AsyncSession = Depends(
     link = f"{settings.frontend_url.rstrip('/')}/auth/magic?token={raw}"
     if body.name:
         await get_bus().redis.set(f"consensus:magic-name:{sha256(raw)}", body.name, ex=settings.magic_link_ttl_minutes * 60)
-    # No email provider is wired yet: the link is logged. Plug an email sender in here.
-    log.info("magic link for %s: %s", body.email, link)
-    out: dict = {"ok": True, "expires_in_minutes": settings.magic_link_ttl_minutes}
+    from app.core.mailer import magic_link_message, send_email
+
+    subject, text, html = magic_link_message(link, settings.magic_link_ttl_minutes)
+    sent = await send_email(str(body.email), subject, text, html)  # logs the link when SMTP is not configured
+    out: dict = {"ok": True, "sent": sent, "expires_in_minutes": settings.magic_link_ttl_minutes}
     if settings.dev_auth:
         out["dev_link"] = link
         out["dev_token"] = raw
@@ -197,4 +199,5 @@ async def me(principal: Principal = Depends(require_principal), db: AsyncSession
 async def providers() -> dict:
     """Which sign-in methods the frontend should offer."""
     s = get_settings()
-    return {"github": bool(s.github_client_id), "magic_link": True, "dev_login": s.dev_auth}
+    # magic links are only offered when they can reach the user: SMTP configured, or dev mode (link in the response)
+    return {"github": bool(s.github_client_id), "magic_link": s.smtp_configured or s.dev_auth, "dev_login": s.dev_auth}

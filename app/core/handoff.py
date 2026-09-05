@@ -8,8 +8,9 @@ from datetime import datetime, timezone
 from sqlalchemy import or_, select
 
 from app.config import get_settings
+from app.core.auth import check_write, current_principal
 from app.core.memory import write_memory
-from app.db.models import Claim, Clash
+from app.db.models import Claim, Clash, Project
 from app.db.session import session_scope
 from app.events.bus import get_bus
 from app.schemas import ClaimOut, ClashOut, FileHandoffResult
@@ -60,6 +61,9 @@ async def file_handoff(
         claim = await db.get(Claim, claim_id)
         if claim is None:
             raise ClaimNotFound(f"claim {claim_id} not found")
+        project = await db.get(Project, claim.project_id)
+        if project is not None:
+            check_write(current_principal.get(), project)
         claim.status = "in_review"
         claim.resolved_at = datetime.now(timezone.utc)
         claim_out = ClaimOut.from_claim(claim)

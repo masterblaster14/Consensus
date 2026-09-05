@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core import retrieval
-from app.core.auth import Forbidden, Principal, current_principal, default_project_for, require_project_access
+from app.core.auth import Forbidden, Principal, check_write, current_principal, default_project_for, require_project_access
 from app.core.clash import Comparison, compare, overall_severity
 from app.core.providers import get_providers
 from app.core.rulings import RulingMatch, find_ruling
@@ -173,6 +173,7 @@ async def declare_intent(
     # 1. agent (own short transaction so the LLM call is not inside a DB txn)
     async with session_scope() as db:
         project = await resolve_project(db, project_id)
+        check_write(current_principal.get(), project)
         agent = await resolve_agent(db, project.id, agent_name, developer_name)
         task = await resolve_task(db, project.id, task_ref)
         pid, agent_id, task_id = project.id, agent.id, (task.id if task else None)

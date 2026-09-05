@@ -102,11 +102,30 @@ class EventBus:
             raise ValueError(f"unknown event type {type_}")
         frame = self.make_frame(project_id, type_, data)
         payload = dumps(frame)
+        await self._persist(frame, payload)
         try:
             await self.redis.publish(_channel(project_id), payload)
         except Exception:  # Redis down must not break the declare flow
             log.exception("event publish failed; delivering locally only")
             self._deliver_local(str(project_id), payload)
+
+    async def _persist(self, frame: dict[str, Any], payload: str) -> None:
+        """Store the frame so GET /api/projects/{id}/activity can replay it. Never breaks publishing."""
+        try:
+            from app.db.models import Event
+            from app.db.session import session_scope
+
+            async with session_scope() as db:
+                db.add(
+                    Event(
+                        id=uuid.UUID(frame["id"]),
+                        project_id=uuid.UUID(frame["project_id"]),
+                        type=frame["type"],
+                        data=json.loads(payload)["data"],
+                    )
+                )
+        except Exception:
+            log.exception("event persist failed for %s; stream continues", frame.get("type"))
 
     # -- subscribe -----------------------------------------------------------
 

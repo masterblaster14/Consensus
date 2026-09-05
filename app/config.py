@@ -64,6 +64,26 @@ class Settings(BaseSettings):
     # the first project (the pre-auth behaviour). Keep true.
     mcp_auth_required: bool = True
 
+    # -- email (magic links, invites). Unset SMTP_HOST = links are logged, not sent. --
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str = "Consensus <no-reply@localhost>"
+    smtp_starttls: bool = True
+
+    # -- encryption at rest for stored GitHub / Notion tokens. A Fernet key; comma-separate
+    #    several to rotate (first encrypts, all decrypt). Unset = derived from SECRET_KEY.
+    #    Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    token_encryption_key: str | None = None
+
+    # -- background PR sync: seconds between sync_open_prs passes over live projects; 0 disables.
+    pr_sync_interval_seconds: int = 300
+
+    @property
+    def smtp_configured(self) -> bool:
+        return bool(self.smtp_host)
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

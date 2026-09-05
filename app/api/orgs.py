@@ -4,27 +4,31 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import CommittingRoute
 from app.api.deps import get_org, get_org_as_admin, require_principal
 from app.config import get_settings
+from app.core import memory as memory_core
 from app.core.auth import Principal, new_opaque_token, slugify
-from app.db.models import Invite, Membership, Organization, Project, User
+from app.core.mailer import invite_message, send_email
+from app.db.models import Agent, Claim, Clash, Invite, MemoryEntry, Membership, Organization, Project, User
 from app.db.session import get_db
+from app.mcp.auth import invalidate_token_cache
 from app.schemas import (
     InviteCreate,
     InviteOut,
+    MemberUpdate,
     MembershipOut,
     NotionConnect,
     OrgCreate,
     OrgOut,
+    OrgSummaryOut,
     OrgUpdate,
     ProjectCreateInOrg,
     ProjectOut,
-    RoleUpdate,
 )
 
 router = APIRouter(prefix="/api", tags=["organisations"], route_class=CommittingRoute)
@@ -47,6 +51,28 @@ def _org_out(org: Organization, role: str | None) -> OrgOut:
 
 def _invite_url(token: str) -> str:
     return f"{get_settings().frontend_url.rstrip('/')}/invite/{token}"
+
+
+def _membership_out(org: Organization, m: Membership) -> MembershipOut:
+    return MembershipOut(
+        org_id=m.org_id, org_name=org.name, org_slug=org.slug, role=m.role, status=m.status,
+        user_id=m.user_id, user_email=m.user.email, user_name=m.user.name, user_avatar_url=m.user.avatar_url,
+    )
+
+
+async def _other_active_admins(db: AsyncSession, org_id: uuid.UUID, except_user_id: uuid.UUID) -> int:
+    return int(
+        (
+            await db.execute(
+                select(func.count()).select_from(Membership).where(
+                    Membership.org_id == org_id,
+                    Membership.role == "admin",
+                    Membership.status == "active",
+                    Membership.user_id != except_user_id,
+                )
+            )
+        ).scalar_one()
+    )
 
 
 # -- orgs -------------------------------------------------------------------------------
@@ -96,27 +122,28 @@ async def update_org(body: OrgUpdate, org: Organization = Depends(get_org_as_adm
 @router.get("/orgs/{org_id}/members", response_model=list[MembershipOut])
 async def list_members(org: Organization = Depends(get_org), db: AsyncSession = Depends(get_db)) -> list[MembershipOut]:
     ms = (await db.execute(select(Membership).where(Membership.org_id == org.id))).scalars().all()
-    return [
-        MembershipOut(
-            org_id=m.org_id, org_name=org.name, org_slug=org.slug, role=m.role,
-            user_id=m.user_id, user_email=m.user.email, user_name=m.user.name, user_avatar_url=m.user.avatar_url,
-        )
-        for m in sorted(ms, key=lambda m: (m.role != "admin", m.user.name.lower()))
-    ]
+    return [_membership_out(org, m) for m in sorted(ms, key=lambda m: (m.role != "admin", m.user.name.lower()))]
 
 
 @router.patch("/orgs/{org_id}/members/{user_id}", response_model=MembershipOut)
-async def set_role(user_id: uuid.UUID, body: RoleUpdate, org: Organization = Depends(get_org_as_admin), principal: Principal = Depends(require_principal), db: AsyncSession = Depends(get_db)) -> MembershipOut:
+async def update_member(user_id: uuid.UUID, body: MemberUpdate, org: Organization = Depends(get_org_as_admin), principal: Principal = Depends(require_principal), db: AsyncSession = Depends(get_db)) -> MembershipOut:
+    """Change a member's role and/or status. `restricted` keeps read access but blocks declarations,
+    memory writes, handoffs, arbitration and admin actions. The last active admin is protected."""
+    if body.role is None and body.status is None:
+        raise HTTPException(status_code=400, detail="send role and/or status")
     m = (await db.execute(select(Membership).where(Membership.org_id == org.id, Membership.user_id == user_id))).scalar_one_or_none()
     if m is None:
         raise HTTPException(status_code=404, detail="member not found")
-    if m.role == "admin" and body.role != "admin":
-        admins = (await db.execute(select(Membership).where(Membership.org_id == org.id, Membership.role == "admin"))).scalars().all()
-        if len(admins) <= 1:
-            raise HTTPException(status_code=409, detail="an organisation needs at least one admin")
-    m.role = body.role
+    loses_admin = m.is_active_admin and ((body.role is not None and body.role != "admin") or (body.status is not None and body.status != "active"))
+    if loses_admin and await _other_active_admins(db, org.id, m.user_id) == 0:
+        raise HTTPException(status_code=409, detail="an organisation needs at least one active admin")
+    if body.role is not None:
+        m.role = body.role
+    if body.status is not None:
+        m.status = body.status
     await db.flush()
-    return MembershipOut(org_id=org.id, org_name=org.name, org_slug=org.slug, role=m.role, user_id=m.user_id, user_email=m.user.email, user_name=m.user.name)
+    invalidate_token_cache()  # MCP calls re-resolve the principal immediately
+    return _membership_out(org, m)
 
 
 @router.delete("/orgs/{org_id}/members/{user_id}", status_code=204)
@@ -127,11 +154,10 @@ async def remove_member(user_id: uuid.UUID, org: Organization = Depends(get_org)
     m = (await db.execute(select(Membership).where(Membership.org_id == org.id, Membership.user_id == user_id))).scalar_one_or_none()
     if m is None:
         raise HTTPException(status_code=404, detail="member not found")
-    if m.role == "admin":
-        admins = (await db.execute(select(Membership).where(Membership.org_id == org.id, Membership.role == "admin"))).scalars().all()
-        if len(admins) <= 1:
-            raise HTTPException(status_code=409, detail="the last admin cannot leave; promote someone first")
+    if m.is_active_admin and await _other_active_admins(db, org.id, m.user_id) == 0:
+        raise HTTPException(status_code=409, detail="the last admin cannot leave; promote someone first")
     await db.delete(m)
+    invalidate_token_cache()
 
 
 # -- invites ---------------------------------------------------------------------------------
@@ -150,7 +176,12 @@ async def create_invite(body: InviteCreate, org: Organization = Depends(get_org_
     )
     db.add(inv)
     await db.flush()
-    return InviteOut(id=inv.id, org_id=org.id, org_name=org.name, email=inv.email, role=inv.role, token=inv.token, url=_invite_url(inv.token), expires_at=inv.expires_at)
+    url = _invite_url(inv.token)
+    email_sent: bool | None = None
+    if inv.email:
+        subject, text, html = invite_message(org.name, url, principal.name or principal.email, inv.role)
+        email_sent = await send_email(inv.email, subject, text, html)
+    return InviteOut(id=inv.id, org_id=org.id, org_name=org.name, email=inv.email, role=inv.role, token=inv.token, url=url, expires_at=inv.expires_at, email_sent=email_sent)
 
 
 @router.get("/orgs/{org_id}/invites", response_model=list[InviteOut])
@@ -200,9 +231,65 @@ async def accept_invite(token: str, principal: Principal = Depends(require_princ
 
 
 @router.get("/orgs/{org_id}/projects", response_model=list[ProjectOut])
-async def list_org_projects(org: Organization = Depends(get_org), db: AsyncSession = Depends(get_db)) -> list[ProjectOut]:
-    rows = (await db.execute(select(Project).where(Project.org_id == org.id).order_by(Project.created_at))).scalars().all()
+async def list_org_projects(
+    org: Organization = Depends(get_org), include_archived: bool = Query(default=False), db: AsyncSession = Depends(get_db)
+) -> list[ProjectOut]:
+    stmt = select(Project).where(Project.org_id == org.id).order_by(Project.created_at)
+    if not include_archived:
+        stmt = stmt.where(Project.archived_at.is_(None))
+    rows = (await db.execute(stmt)).scalars().all()
     return [ProjectOut.model_validate(p) for p in rows]
+
+
+async def _org_project(db: AsyncSession, org: Organization, project_id: uuid.UUID) -> Project:
+    project = await db.get(Project, project_id)
+    if project is None or project.org_id != org.id:
+        raise HTTPException(status_code=404, detail="project not found in this organisation")
+    return project
+
+
+@router.delete("/orgs/{org_id}/projects/{project_id}", status_code=204)
+async def archive_org_project(project_id: uuid.UUID, org: Organization = Depends(get_org_as_admin), db: AsyncSession = Depends(get_db)) -> None:
+    """Soft delete (admin). Same as DELETE /api/projects/{id}: hidden from lists, rejects writes, history kept."""
+    project = await _org_project(db, org, project_id)
+    if project.archived_at is None:
+        project.archived_at = datetime.now(timezone.utc)
+        await db.flush()
+
+
+@router.post("/orgs/{org_id}/projects/{project_id}/restore", response_model=ProjectOut)
+async def restore_org_project(project_id: uuid.UUID, org: Organization = Depends(get_org_as_admin), db: AsyncSession = Depends(get_db)) -> ProjectOut:
+    project = await _org_project(db, org, project_id)
+    project.archived_at = None
+    await db.flush()
+    return ProjectOut.model_validate(project)
+
+
+@router.get("/orgs/{org_id}/summary", response_model=OrgSummaryOut)
+async def org_summary(org: Organization = Depends(get_org), db: AsyncSession = Depends(get_db)) -> OrgSummaryOut:
+    """Admin dashboard tiles in one call. Archived projects and their agents are excluded."""
+    live = select(Project.id).where(Project.org_id == org.id, Project.archived_at.is_(None))
+    pids = list((await db.execute(live)).scalars().all())
+
+    async def count(stmt) -> int:
+        return int((await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
+
+    repositories = await count(live.where(Project.repo_full_name.is_not(None)))
+    members = await count(select(Membership.id).where(Membership.org_id == org.id))
+    if not pids:
+        return OrgSummaryOut(projects=0, repositories=repositories, members=members, agents=0, active_agents=0, open_claims=0, open_clashes=0, memory_count=0, tokens_saved=0)
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    return OrgSummaryOut(
+        projects=len(pids),
+        repositories=repositories,
+        members=members,
+        agents=await count(select(Agent.id).where(Agent.project_id.in_(pids))),
+        active_agents=await count(select(Agent.id).where(Agent.project_id.in_(pids), Agent.last_seen >= since)),
+        open_claims=await count(select(Claim.id).where(Claim.project_id.in_(pids), Claim.status == "open")),
+        open_clashes=await count(select(Clash.id).where(Clash.project_id.in_(pids), Clash.status == "open")),
+        memory_count=await count(select(MemoryEntry.id).where(MemoryEntry.project_id.in_(pids))),
+        tokens_saved=sum([await memory_core.tokens_saved(db, pid) for pid in pids]),
+    )
 
 
 @router.post("/orgs/{org_id}/projects", response_model=ProjectOut, status_code=201)

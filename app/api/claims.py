@@ -8,9 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import CommittingRoute
-from app.api.deps import get_project, optional_principal, require_access_to_project_id
+from app.api.deps import get_project, http_from_auth_error, optional_principal, require_access_to_project_id
 from app.core import handoff as handoff_core
-from app.core.auth import Principal
+from app.core.auth import AuthError, Forbidden, Principal
 from app.db.models import Claim, Project
 from app.db.session import get_db
 from app.schemas import ClaimOut, FileHandoffResult
@@ -62,3 +62,5 @@ async def handoff_via_rest(claim_id: uuid.UUID, body: dict, principal: Principal
         )
     except handoff_core.ClaimNotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except (AuthError, Forbidden) as e:
+        raise http_from_auth_error(e)

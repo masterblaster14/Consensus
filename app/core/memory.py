@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core import retrieval
-from app.core.auth import current_principal
+from app.core.auth import check_write, current_principal
 from app.core.providers import get_providers
 from app.core.text import normalize_concept
 from app.core.verdict import resolve_agent, resolve_project
@@ -90,6 +90,7 @@ async def write_memory(
 
     async with session_scope() as db:
         project = await resolve_project(db, project_id)
+        check_write(current_principal.get(), project)
         agent = await resolve_agent(db, project.id, agent_name, developer_name)
 
         hits = await retrieval.similar_memory(db, project.id, embedding, limit=1, types=[type])
@@ -158,6 +159,7 @@ async def record_token_event(
 ) -> uuid.UUID:
     async with session_scope() as db:
         project = await resolve_project(db, project_id)
+        check_write(current_principal.get(), project)
         agent = await resolve_agent(db, project.id, agent_name, None)
         ev = TokenEvent(project_id=project.id, agent_id=agent.id, kind=kind, tokens=tokens)
         db.add(ev)

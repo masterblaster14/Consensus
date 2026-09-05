@@ -74,6 +74,8 @@ async def resolve_clash(clash_id: uuid.UUID, body: ResolveClashRequest, principa
     if principal is not None:
         project = await db.get(Project, clash.project_id)
         owns_agent = principal.user_id in {clash.claim_a.agent.user_id, clash.claim_b.agent.user_id}
+        if principal.is_restricted(project.org_id):
+            raise HTTPException(status_code=403, detail="your membership in this organisation is restricted to read-only")
         if not (principal.is_admin(project.org_id) or owns_agent):
             raise HTTPException(status_code=403, detail="only an admin or the owner of an involved agent can resolve this clash")
         resolved_by = principal.email if body.resolved_by in ("", "human") else body.resolved_by

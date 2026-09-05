@@ -15,6 +15,7 @@ from app.db.session import CommittingRoute, dispose_engine, get_engine
 from app.events.bus import get_bus
 from app.mcp.auth import MCPAuthMiddleware
 from app.mcp.server import build_mcp_app, mcp_server
+from app.core.scheduler import start_background_tasks, stop_background_tasks
 from starlette.routing import Route
 
 log = logging.getLogger("consensus")
@@ -30,10 +31,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # the lifetime of the process. Mounting a sub-app does not run its lifespan,
     # so we drive it from here.
     async with mcp_server.session_manager.run():
+        background = start_background_tasks()
         log.info("consensus ready (github=%s notion=%s)", settings.github_enabled, settings.notion_enabled)
         try:
             yield
         finally:
+            await stop_background_tasks(background)
             await bus.stop()
             await dispose_engine()
 

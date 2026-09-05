@@ -123,14 +123,16 @@ GET  /api/auth/me                           {user, memberships[{org_id, org_name
 GET  /api/orgs                              my orgs (with my role + integration status)
 POST /api/orgs                              {name, slug?, auto_join_domain?} -> OrgOut (creator = admin)
 GET  /api/orgs/{id}   PATCH /api/orgs/{id}  {name?, auto_join_domain?}          (admin)
-GET  /api/orgs/{id}/members                 [MembershipOut]
-PATCH /api/orgs/{id}/members/{user_id}      {role}                              (admin; last admin protected)
+GET  /api/orgs/{id}/members                 [MembershipOut]  (role, status)
+PATCH /api/orgs/{id}/members/{user_id}      {role?, status?}   status: active|restricted   (admin; last active admin protected)
 DELETE /api/orgs/{id}/members/{user_id}     admin removes anyone; a member removes themselves
+GET  /api/orgs/{id}/summary                 {projects, repositories, members, agents, active_agents, open_claims, open_clashes, memory_count, tokens_saved}
 POST /api/orgs/{id}/invites                 {email?, role?} -> {token, url, ...}  (admin)
 GET  /api/orgs/{id}/invites  DELETE /api/orgs/{id}/invites/{invite_id}
 GET  /api/invites/{token}                   public preview {org_name, role, email}
 POST /api/invites/{token}/accept            -> OrgOut (signed-in user joins)
-GET  /api/orgs/{id}/projects  POST /api/orgs/{id}/projects {name, repo_full_name?}
+GET  /api/orgs/{id}/projects?include_archived=   POST /api/orgs/{id}/projects {name, repo_full_name?}
+DELETE /api/orgs/{id}/projects/{pid}        archive (admin; soft delete)   POST .../projects/{pid}/restore
 POST /api/orgs/{id}/integrations/github/connect   DELETE .../github   GET .../github/repos
 PUT  /api/orgs/{id}/integrations/notion {notion_token, notion_tasks_db_id}   DELETE .../notion
 
@@ -138,6 +140,12 @@ GET  /api/me/api-keys                       [ApiKeyOut]  (prefix only)
 POST /api/me/api-keys                       {name?, org_id?, project_id?} -> {key (once), mcp_url, ...}
 DELETE /api/me/api-keys/{key_id}            revoke
 ```
+
+**Restricted members** (`status: restricted`) keep every read, including `query_memory`, and get 403 on `declare_intent`, `write_memory`, `file_handoff`, `report_usage`, task edits, clash resolution and admin routes. A restricted admin has no admin powers until reinstated.
+
+**Email.** Magic links and emailed invites are sent over SMTP when `SMTP_HOST` is set (`app/core/mailer.py`); responses carry `sent` / `email_sent`. Without it the link is logged and, with `DEV_AUTH=true`, returned in the response. `/api/auth/providers` offers `magic_link` only when one of those holds.
+
+**Tokens at rest.** `users.github_access_token`, `organizations.github_token` and `organizations.notion_token` are Fernet-encrypted by the `EncryptedText` column type (`app/db/crypto.py`; key from `TOKEN_ENCRYPTION_KEY`, else derived from `SECRET_KEY`). Legacy plaintext rows still read; `python -m scripts.encrypt_tokens` rewrites them.
 
 Seeded demo: org `Consensus Demo`, admin `demo@example.com` (dev-login), members Priya / Marcus / Lena, and an admin API key printed by the seed script.
 
@@ -159,11 +167,17 @@ Agents authenticate with `Authorization: Bearer csk_…` (an API key from `POST 
 All JSON. CORS is enabled for `CORS_ORIGINS` (default: localhost:3000 and :5173). Every route requires `Authorization: Bearer <jwt or api key>` and is scoped to the caller's organisations; `GET /api/projects` lists only projects the caller can see.
 
 ```
-GET  /api/projects                              [ProjectOut]
+GET  /api/projects?include_archived=            [ProjectOut]   (archived hidden by default)
 POST /api/projects                              {name, repo_full_name?, id?} -> ProjectOut
-GET  /api/projects/{id}                         ProjectOut
-GET  /api/projects/{id}/agents                  [AgentOut]
-GET  /api/projects/{id}/tasks                   [TaskOut]
+GET  /api/projects/{id}                         ProjectOut  (archived_at set = soft-deleted)
+DELETE /api/projects/{id}                       archive (admin): hidden, rejects writes, reads keep working
+POST /api/projects/{id}/restore                 ProjectOut
+GET  /api/projects/{id}/agents                  [AgentOut]  + status working|reviewing|idle, open_claims, current_claim
+GET  /api/projects/{id}/tasks?status=           [TaskOut]   status: open|in_progress|done
+POST /api/projects/{id}/tasks                   {title, external_ref?, status?} -> TaskOut   (409 on duplicate external_ref)
+PATCH /api/projects/{id}/tasks/{task_id}        {title?, external_ref?, status?, assignee_agent?}  ("" clears the assignee)
+DELETE /api/projects/{id}/tasks/{task_id}       claims keep their history, the link is cleared
+GET  /api/projects/{id}/activity?limit=&before=&type=   persisted event frames (WebSocket shape), newest first; page with before=<ts>
 GET  /api/projects/{id}/claims?status=&agent=   [ClaimOut]      status: open|in_review|retired
 GET  /api/claims/{claim_id}                     ClaimOut
 GET  /api/projects/{id}/memory?type=&q=         [MemoryEntryOut] q = semantic search
@@ -187,7 +201,7 @@ POST /api/projects/{id}/integrations/notion/sync    sync_tasks
 
 Resolution semantics: `a_proceeds` = the earlier claim (`claim_a`) proceeds; `b_proceeds` = the newer claim (`claim_b`, the one that received `wait`) proceeds; `both_with_note`.
 
-`ClashOut` carries denormalised fields the board needs: `agent_a`, `agent_b`, `intent_a`, `intent_b`, `position_a`, `position_b`, `axis`, `shared_concepts`, `severity`, `status`, `resolution`, `resolution_note`, `resolved_by`. `ClaimOut` carries `agent_name`, `developer_name`, `task_ref`, `stance`, `concepts`, `branch`, `pr_number`, `status`.
+`ClashOut` also carries presentation fields: `title`, `explanation` (one sentence from both positions) and `severity_label` (high / medium / low). `MemoryEntryOut` carries `title` (concepts, else the first sentence). `ClashOut` carries denormalised fields the board needs: `agent_a`, `agent_b`, `intent_a`, `intent_b`, `position_a`, `position_b`, `axis`, `shared_concepts`, `severity`, `status`, `resolution`, `resolution_note`, `resolved_by`. `ClaimOut` carries `agent_name`, `developer_name`, `task_ref`, `stance`, `concepts`, `branch`, `pr_number`, `status`.
 
 Full schemas: `GET /openapi.json` or [app/schemas.py](../app/schemas.py).
 
@@ -212,11 +226,11 @@ First frame is `{"type":"hello","data":{"counters":{…}}}`. Send `"ping"` to ge
 | `handoff.filed` | `{claim: ClaimOut, entry_id, changed, untouched, assumptions, uncertainties}` |
 | `pr.opened` | `{claim_id, pr_url, pr_number}` |
 
-Events are not persisted; on reconnect, re-fetch claims / clashes / memory / counters and resume the stream.
+Every published frame is also stored in the `events` table and served by `GET /api/projects/{id}/activity`, so a dashboard loads history from there and applies live frames on top. On reconnect, re-fetch activity (or claims / clashes / memory / counters) and resume the stream.
 
 ## Integrations
 
-- **GitHub** (`ENABLE_GITHUB`; token from the org's connected admin or `GITHUB_TOKEN`; project needs `repo_full_name`): `file_handoff` opens (or updates) a PR from `claim.branch` with the intent, changed/untouched lists, assumptions, uncertainties and clash resolutions. Resolving a clash comments on the related PR. `sync_open_prs` creates `in_review` claims for untracked PRs. Webhook `pull_request.closed` retires the claim (HMAC verified with `GITHUB_WEBHOOK_SECRET`).
+- **GitHub** (`ENABLE_GITHUB`; token from the org's connected admin or `GITHUB_TOKEN`; project needs `repo_full_name`): `file_handoff` opens (or updates) a PR from `claim.branch` with the intent, changed/untouched lists, assumptions, uncertainties and clash resolutions. Resolving a clash comments on the related PR. `sync_open_prs` creates `in_review` claims for untracked PRs; it also runs in the background every `PR_SYNC_INTERVAL_SECONDS` (default 300, 0 disables) over every live project with a repository (`app/core/scheduler.py`). Webhook `pull_request.closed` retires the claim (HMAC verified with `GITHUB_WEBHOOK_SECRET`).
 - **Notion** (`ENABLE_NOTION`; token + tasks database id from the org settings or `NOTION_TOKEN` / `NOTION_TASKS_DB_ID`): `sync_tasks` upserts tasks from the database; `decision`, `dead_end` and `ruling` entries are mirrored as pages.
 
 Both are fire-and-forget from the declare / resolve / handoff paths; a failure is logged and never changes a verdict.

@@ -9,6 +9,8 @@ from sqlalchemy import DateTime, ForeignKey, Index, Integer, Text, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from app.db.crypto import EncryptedText
+
 EMBEDDING_DIM = 1536
 
 CLAIM_STATUSES = ("open", "in_review", "retired")
@@ -19,6 +21,8 @@ CLASH_RESOLUTIONS = ("a_proceeds", "b_proceeds", "both_with_note")
 TOKEN_EVENT_KINDS = ("codebase_read", "memory_read")
 FOUR_AXES = ("error_handling", "auth_check", "data_access", "api_shape")
 ROLES = ("admin", "member")
+MEMBERSHIP_STATUSES = ("active", "restricted")  # restricted = read-only: no declarations, writes or admin actions
+TASK_STATUSES = ("open", "in_progress", "done")
 
 
 class Base(DeclarativeBase):
@@ -37,7 +41,7 @@ class User(Base):
     avatar_url: Mapped[str | None] = mapped_column(Text)
     github_id: Mapped[int | None] = mapped_column(Integer, unique=True)
     github_login: Mapped[str | None] = mapped_column(Text)
-    github_access_token: Mapped[str | None] = mapped_column(Text)  # OAuth token, used for org GitHub integration
+    github_access_token: Mapped[str | None] = mapped_column(EncryptedText)  # OAuth token, used for org GitHub integration; encrypted at rest
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -48,9 +52,9 @@ class Organization(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     slug: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     auto_join_domain: Mapped[str | None] = mapped_column(Text)  # e.g. "acme.com": verified emails auto-join as member
-    github_token: Mapped[str | None] = mapped_column(Text)
+    github_token: Mapped[str | None] = mapped_column(EncryptedText)  # encrypted at rest (app/db/crypto.py)
     github_connected_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
-    notion_token: Mapped[str | None] = mapped_column(Text)
+    notion_token: Mapped[str | None] = mapped_column(EncryptedText)
     notion_tasks_db_id: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -62,10 +66,15 @@ class Membership(Base):
     org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     role: Mapped[str] = mapped_column(Text, nullable=False, default="member")
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="active", server_default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped[User] = relationship(lazy="joined")
     org: Mapped[Organization] = relationship(lazy="joined")
+
+    @property
+    def is_active_admin(self) -> bool:
+        return self.role == "admin" and self.status == "active"
 
     __table_args__ = (Index("ix_memberships_org_user", "org_id", "user_id", unique=True),)
 
@@ -121,6 +130,7 @@ class Project(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     repo_full_name: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # soft delete: hidden, rejects writes
 
 
 class Agent(Base):
@@ -142,6 +152,11 @@ class Task(Base):
     external_ref: Mapped[str | None] = mapped_column(Text)
     notion_page_id: Mapped[str | None] = mapped_column(Text)
     title: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="open", server_default="open")
+    assignee_agent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agents.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    assignee: Mapped[Agent | None] = relationship(lazy="joined")
 
 
 class Claim(Base):
@@ -246,3 +261,17 @@ class VerdictLog(Base):
     detail: Mapped[dict] = mapped_column(JSONB, nullable=False)
     duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Event(Base):
+    """Persisted copy of every published event frame (app/events/bus.py), so the activity
+    feed survives page reloads. `id` is the frame id; `data` is the frame's data payload."""
+
+    __tablename__ = "events"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    type: Mapped[str] = mapped_column(Text, nullable=False)
+    data: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (Index("ix_events_project_created", "project_id", "created_at"),)

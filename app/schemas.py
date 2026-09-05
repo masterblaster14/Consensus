@@ -27,6 +27,7 @@ class ProjectOut(ORM):
     name: str
     repo_full_name: str | None = None
     created_at: datetime | None = None
+    archived_at: datetime | None = None  # set = soft-deleted: hidden from lists, rejects writes
 
 
 class ProjectCreate(BaseModel):
@@ -36,6 +37,33 @@ class ProjectCreate(BaseModel):
     id: uuid.UUID | None = None
 
 
+class ClaimBrief(BaseModel):
+    """The slice of a claim an agent list needs."""
+
+    id: uuid.UUID
+    intent_text: str
+    status: str
+    branch: str | None = None
+    task_ref: str | None = None
+    pr_number: int | None = None
+    created_at: datetime | None = None
+
+    @classmethod
+    def from_claim(cls, c) -> "ClaimBrief":
+        return cls(
+            id=c.id,
+            intent_text=c.intent_text,
+            status=c.status,
+            branch=c.branch,
+            task_ref=c.task.external_ref if c.task else None,
+            pr_number=c.pr_number,
+            created_at=c.created_at,
+        )
+
+
+AgentStatus = Literal["working", "reviewing", "idle"]
+
+
 class AgentOut(ORM):
     id: uuid.UUID
     project_id: uuid.UUID
@@ -43,6 +71,33 @@ class AgentOut(ORM):
     developer_name: str
     user_id: uuid.UUID | None = None
     last_seen: datetime | None = None
+    # Derived from the agent's claims: working = has an open claim, reviewing = newest
+    # non-retired claim is in review, idle = neither. current_claim is that newest claim.
+    status: AgentStatus = "idle"
+    open_claims: int = 0
+    current_claim: ClaimBrief | None = None
+
+    @classmethod
+    def from_agent(cls, a, claims: list | None = None) -> "AgentOut":
+        """`claims`: this agent's non-retired claims, newest first."""
+        claims = claims or []
+        open_ = [c for c in claims if c.status == "open"]
+        current = open_[0] if open_ else (claims[0] if claims else None)
+        status: AgentStatus = "working" if open_ else ("reviewing" if current is not None else "idle")
+        return cls(
+            id=a.id,
+            project_id=a.project_id,
+            name=a.name,
+            developer_name=a.developer_name,
+            user_id=a.user_id,
+            last_seen=a.last_seen,
+            status=status,
+            open_claims=len(open_),
+            current_claim=ClaimBrief.from_claim(current) if current is not None else None,
+        )
+
+
+TaskStatus = Literal["open", "in_progress", "done"]
 
 
 class TaskOut(ORM):
@@ -51,6 +106,37 @@ class TaskOut(ORM):
     external_ref: str | None = None
     notion_page_id: str | None = None
     title: str
+    status: str = "open"
+    assignee_agent_id: uuid.UUID | None = None
+    assignee_agent: str | None = None
+    created_at: datetime | None = None
+
+    @classmethod
+    def from_task(cls, t) -> "TaskOut":
+        return cls(
+            id=t.id,
+            project_id=t.project_id,
+            external_ref=t.external_ref,
+            notion_page_id=t.notion_page_id,
+            title=t.title,
+            status=t.status,
+            assignee_agent_id=t.assignee_agent_id,
+            assignee_agent=t.assignee.name if t.assignee else None,
+            created_at=t.created_at,
+        )
+
+
+class TaskCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    external_ref: str | None = None
+    status: TaskStatus = "open"
+
+
+class TaskUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    external_ref: str | None = None
+    status: TaskStatus | None = None
+    assignee_agent: str | None = None  # agent name in the project; "" clears the assignee
 
 
 class StanceOut(BaseModel):
@@ -100,10 +186,26 @@ class ClaimOut(ORM):
         )
 
 
+def memory_title(concepts: list[str], content: str, max_len: int = 80) -> str:
+    """Heading for a memory card: the concepts, else the first sentence of the content."""
+    if concepts:
+        t = ", ".join(str(c).strip() for c in concepts[:3] if str(c).strip())
+    else:
+        first = content.strip().splitlines()[0] if content.strip() else ""
+        for sep in (". ", "? ", "! ", ": "):
+            if sep in first:
+                first = first.split(sep, 1)[0] + sep.strip()
+                break
+        t = first
+    t = t[:1].upper() + t[1:]
+    return t if len(t) <= max_len else t[: max_len - 1].rstrip() + "\u2026"
+
+
 class MemoryEntryOut(ORM):
     id: uuid.UUID
     project_id: uuid.UUID
     type: str
+    title: str = ""
     content: str
     concepts: list[str]
     axis: str | None = None
@@ -118,6 +220,7 @@ class MemoryEntryOut(ORM):
             id=e.id,
             project_id=e.project_id,
             type=e.type,
+            title=memory_title(list(e.concepts or []), e.content),
             content=e.content,
             concepts=list(e.concepts or []),
             axis=e.axis,
@@ -126,6 +229,43 @@ class MemoryEntryOut(ORM):
             related_claim_id=e.related_claim_id,
             created_at=e.created_at,
         )
+
+
+AXIS_LABELS = {
+    "error_handling": "Error handling",
+    "auth_check": "Auth check",
+    "data_access": "Data access",
+    "api_shape": "API shape",
+}
+SEVERITY_LABELS = {"hard": "high", "soft": "medium", "context": "low", "clear": "none"}
+
+
+def axis_label(axis: str) -> str:
+    return AXIS_LABELS.get(axis, axis.replace("_", " ").capitalize())
+
+
+def clash_title(axis: str, shared_concepts: list[str]) -> str:
+    concepts = ", ".join(shared_concepts[:3]) if shared_concepts else "shared work"
+    return f"{axis_label(axis)} conflict on {concepts}"
+
+
+def clash_explanation(
+    agent_a: str | None,
+    agent_b: str | None,
+    axis: str,
+    shared_concepts: list[str],
+    position_a: str | None,
+    position_b: str | None,
+) -> str:
+    a, b = agent_a or "The first agent", agent_b or "the second agent"
+    concepts = ", ".join(shared_concepts[:3]) if shared_concepts else "the same part of the codebase"
+    label = axis_label(axis).lower()
+    if position_a and position_b:
+        return (
+            f"{a} plans \"{position_a}\" while {b} plans \"{position_b}\". "
+            f"Both touch {concepts}, so the {label} must be settled before either proceeds."
+        )
+    return f"{a} and {b} both touch {concepts} and take different positions on {label}."
 
 
 class ClashOut(ORM):
@@ -147,10 +287,19 @@ class ClashOut(ORM):
     resolution_note: str | None = None
     resolved_by: str | None = None
     created_at: datetime | None = None
+    # Presentation fields, derived: a headline, one plain sentence, and severity as high/medium/low.
+    title: str = ""
+    explanation: str = ""
+    severity_label: str = ""
 
     @classmethod
     def from_clash(cls, x) -> "ClashOut":
         a, b = x.claim_a, x.claim_b
+        agent_a = a.agent.name if a and a.agent else None
+        agent_b = b.agent.name if b and b.agent else None
+        pos_a = (a.stance or {}).get(x.axis) if a else None
+        pos_b = (b.stance or {}).get(x.axis) if b else None
+        shared = list(x.shared_concepts or [])
         return cls(
             id=x.id,
             project_id=x.project_id,
@@ -170,7 +319,24 @@ class ClashOut(ORM):
             resolution_note=x.resolution_note,
             resolved_by=x.resolved_by,
             created_at=x.created_at,
+            title=clash_title(x.axis, shared),
+            explanation=clash_explanation(agent_a, agent_b, x.axis, shared, pos_a, pos_b),
+            severity_label=SEVERITY_LABELS.get(x.severity, x.severity),
         )
+
+
+class OrgSummaryOut(BaseModel):
+    """Admin dashboard tiles. Archived projects are excluded."""
+
+    projects: int
+    repositories: int
+    members: int
+    agents: int
+    active_agents: int  # seen in the last 24 hours
+    open_claims: int
+    open_clashes: int
+    memory_count: int
+    tokens_saved: int
 
 
 class CountersOut(BaseModel):
@@ -307,6 +473,7 @@ class MembershipOut(BaseModel):
     org_name: str | None = None
     org_slug: str | None = None
     role: str
+    status: str = "active"  # active | restricted (read-only)
     user_id: uuid.UUID
     user_email: str | None = None
     user_name: str | None = None
@@ -360,10 +527,17 @@ class InviteOut(ORM):
     url: str | None = None
     expires_at: datetime | None = None
     accepted_at: datetime | None = None
+    email_sent: bool | None = None  # only on creation with an email: True when handed to SMTP
 
 
-class RoleUpdate(BaseModel):
-    role: Literal["admin", "member"]
+class MemberUpdate(BaseModel):
+    """PATCH /api/orgs/{id}/members/{user_id}: change role and/or status. At least one field."""
+
+    role: Literal["admin", "member"] | None = None
+    status: Literal["active", "restricted"] | None = None
+
+
+RoleUpdate = MemberUpdate  # backwards-compatible name
 
 
 class ProjectCreateInOrg(BaseModel):

@@ -149,12 +149,12 @@ Nothing does intent-level conflict detection. Adjacent tools are code review ass
 Because the number of agents per team just went from zero to one per developer, and the tools that coordinate humans were never built to see what agents intend.
 
 **What is the roadmap?**
-Near term: metering and billing, encryption of stored integration tokens, email delivery, background PR sync. Then richer axes learned from real team vocabulary, per-repository synonym maps, and analytics on which rulings save the most interruptions. Longer term: coordination across repositories in the same organisation.
+Near term: metering and billing, and the team-level access decision (see backend-pending.md). Then richer axes learned from real team vocabulary, per-repository synonym maps, and analytics on which rulings save the most interruptions. Longer term: coordination across repositories in the same organisation.
 
 ## Limitations, stated plainly
 
 **What does it not do yet?**
-Embeddings and Notion have not been exercised with real keys in this build; the offline embedding provider is in use. Real GitHub merge webhooks need a public URL. Magic links need an email provider. Pricing limits are not enforced. Stored OAuth tokens are not encrypted at rest.
+Embeddings, Notion and SMTP have not been exercised with real credentials in this build; the offline embedding provider is in use. Real GitHub merge webhooks need a public URL. Pricing limits are not enforced.
 
 **Where will it be wrong?**
 The comparison is heuristic, tuned on a small set of plan pairs. Teams with unusual vocabulary will see some false clashes until the synonym map is extended, and a plan written vaguely produces a vague stance. Both are visible and tunable because every verdict is logged with its inputs.

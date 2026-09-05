@@ -88,7 +88,7 @@ async def clean_db(schema):
     async with engine.begin() as conn:
         await conn.execute(
             text(
-                "TRUNCATE verdict_logs, token_events, clashes, memory_entries, claims, tasks, agents, "
+                "TRUNCATE events, verdict_logs, token_events, clashes, memory_entries, claims, tasks, agents, "
                 "api_keys, invites, memberships, magic_links, projects, organizations, users CASCADE"
             )
         )

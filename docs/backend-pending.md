@@ -1,37 +1,29 @@
 # Backend: pending changes
 
-The single queue of backend work. Section A comes from reviewing the merged frontend (`frontend/`) against the REST and WebSocket contract in [backend-reference.md](backend-reference.md). Section B carries the operational gaps already listed in [qa.md](qa.md) so nothing is tracked in two places. Section C lists frontend assumptions that need **no** backend change, only a different frontend approach, so nobody files them as backend work.
+The single queue of backend work. Section A came from reviewing the merged frontend (`frontend/` on the `Frontend` branch) against the REST and WebSocket contract in [backend-reference.md](backend-reference.md). Section B carries the operational gaps from [qa.md](qa.md). Section C lists frontend assumptions that need **no** backend change, only a different frontend approach.
 
-Ordering inside A is by how much frontend work each one unblocks.
+**Status on 2026-09-06:** everything in A except the team-secret decision (item 6) is built, migrated (`alembic upgrade head` → `0003_frontend_queue`) and covered by `tests/test_queue.py`. In B, email delivery, encryption at rest and background PR sync are built; metering and webhook registration remain.
 
 ## A. Needed by the frontend
 
-### 1. Persisted activity feed
-- **Add:** `events` table written from the event bus on every publish; `GET /api/projects/{id}/activity?limit=&before=` returning the same envelope as the WebSocket frames (`id, type, ts, data`), newest first.
-- **Why:** the dashboard's "Recent activity" panel, the Activity page and the agent detail timeline all show a history. WebSocket events are not persisted today, so every page load starts empty until something happens.
-- **Size:** small. One table, one insert in `app/events/bus.py`, one route.
+### 1. Persisted activity feed — done
+- `events` table written by the event bus on every publish; `GET /api/projects/{id}/activity?limit=&before=<ts>&type=a,b` returns frames in the WebSocket shape (`id, type, project_id, ts, data`), newest first. Page by passing the last frame's `ts` as `before`.
+- Frontend: load this on mount, then apply live WebSocket frames on top.
 
-### 2. Agents enriched with current work
-- **Add:** on `AgentOut` (or via `?include=current`): `status` (`working` if the agent has an open claim, `reviewing` if its newest claim is `in_review`, else `idle`), `current_claim` (`id, intent_text, branch, task_ref, status, created_at`), `open_claims`.
-- **Why:** the Agents page and the "Agents at work" rows show status, task and branch per agent. Every screen that lists agents would otherwise join claims client-side.
-- **Size:** small. `AgentOut` gains optional fields; one query in `app/api/projects.py`.
+### 2. Agents enriched with current work — done
+- `AgentOut` now carries `status` (`working` = has an open claim, `reviewing` = newest non-retired claim is in review, `idle`), `open_claims`, and `current_claim` (`id, intent_text, status, branch, task_ref, pr_number, created_at`).
+- Frontend: "progress %" and "role" still have no data source. Use `current_claim.intent_text` as the task line and `branch` as the branch chip.
 
-### 3. Delete or archive a project
-- **Add:** `DELETE /api/orgs/{org_id}/projects/{project_id}` (admin only) as a soft delete (`archived_at`); archived projects drop out of every list and reject new declarations.
-- **Why:** the admin console has a "Delete Teams" page and there is no endpoint for it.
-- **Size:** small. Migration adds one column; list queries filter on it.
+### 3. Delete or archive a project — done
+- `DELETE /api/projects/{id}` and `DELETE /api/orgs/{org_id}/projects/{id}` (admin) set `archived_at`. Archived projects drop out of every list unless `?include_archived=true`, reject declarations and writes with 403, and keep serving reads so history stays visible. `POST .../restore` undoes it. `ProjectOut.archived_at` says which state a project is in.
 
-### 4. Restrict a member
-- **Add:** `Membership.status` = `active | restricted`; `PATCH /api/orgs/{id}/members/{user_id}` accepts `{status}` alongside `{role}`; a restricted principal (JWT or API key) gets 403 on `declare_intent`, `write_memory`, `file_handoff`, clash resolution and org admin routes, and keeps read access.
-- **Why:** the admin console has a "Restrict Members" toggle. The backend only knows role and removal.
-- **Size:** small to medium. Migration, one check in `app/api/deps.py` / `app/mcp/auth.py`, last-admin protection must ignore restricted admins.
+### 4. Restrict a member — done
+- `Membership.status` = `active | restricted`. `PATCH /api/orgs/{id}/members/{user_id}` takes `{role?, status?}` (at least one). A restricted principal, over REST or an API key, gets 403 on `declare_intent`, `write_memory`, `file_handoff`, `report_usage`, task edits, clash resolution and every admin route, and keeps all reads including `query_memory`. A restricted admin has no admin powers until reinstated. The last **active** admin cannot be restricted, demoted or removed (409). `MembershipOut.status` and `/api/auth/me` memberships carry the status.
 
-### 5. Org summary
-- **Add:** `GET /api/orgs/{id}/summary` → `{projects, members, repositories, active_agents, open_clashes, open_claims}`.
-- **Why:** the admin dashboard's four tiles. Without it the frontend calls projects, members and each project's counters separately.
-- **Size:** small.
+### 5. Org summary — done
+- `GET /api/orgs/{id}/summary` → `{projects, repositories, members, agents, active_agents, open_claims, open_clashes, memory_count, tokens_saved}`. `active_agents` = seen in the last 24 hours. Archived projects are excluded.
 
-### 6. Team-level access (decision needed)
+### 6. Team-level access — decision still needed
 - **Frontend assumes:** after joining an organisation via invite link, a person also enters a **Team ID + Team Secret** to get into a team, and admins generate those credentials per team.
 - **Backend has:** organisation membership only. Every project in an org is visible to every member. No per-project secret, no per-project membership.
 - **Options:**
@@ -39,39 +31,53 @@ Ordering inside A is by how much frontend work each one unblocks.
   - (b) Project-scoped invites: `POST /api/orgs/{id}/projects/{pid}/invites`, a `project_members` table, and visibility limited to project members plus org admins. Medium effort and touches every project-scoped query and the MCP key resolution.
 - **Until decided:** the frontend builds (a).
 
-### 7. Manual tasks
-- **Add:** `POST /api/projects/{id}/tasks {title, external_ref?}`, `PATCH /api/projects/{id}/tasks/{task_id} {title?, status?, assignee_agent?}`, and `status` + `assignee` on `TaskOut`.
-- **Why:** the dashboard has a "New task" button and a Tasks page with a count. Tasks are currently only created by Notion sync and have no status.
-- **Size:** small.
+### 7. Manual tasks — done
+- `POST /api/projects/{id}/tasks {title, external_ref?, status?}` (409 on a duplicate `external_ref`), `PATCH /api/projects/{id}/tasks/{task_id} {title?, external_ref?, status?, assignee_agent?}` (`assignee_agent` is an agent name; `""` clears), `DELETE .../tasks/{task_id}` (claims keep their history, the link is cleared). `GET .../tasks?status=` filters. `TaskOut` gained `status` (`open | in_progress | done`), `assignee_agent_id`, `assignee_agent`, `created_at`. A declared `task_ref` still auto-creates the task when it does not exist.
+- Not done on purpose: no automatic status changes from declarations or handoffs. Add if the team wants it.
 
-### 8. Clash presentation fields (optional)
-- **Add:** on `ClashOut`: `title` (e.g. "Session model: server-side store vs signed tokens", built from `axis` and `shared_concepts`), `explanation` (one deterministic sentence from the two positions), `severity_label` (`hard` → high, `soft` → medium, `context` → low).
-- **Why:** the Conflicts page shows a headline and a plain-English explanation. The frontend can template these; a backend field keeps the wording identical to the PR comment the backend already writes.
-- **Size:** small.
+### 8. Clash presentation fields — done
+- `ClashOut` gained `title` ("Auth check conflict on session model, login"), `explanation` (one sentence built from both agents' positions), `severity_label` (`hard` → high, `soft` → medium, `context` → low).
 
-### 9. Memory entry title (optional)
-- **Add:** `title` on `MemoryEntryOut` (concept list or first sentence).
-- **Why:** the Shared Memory cards show a title over the content. Frontend can derive it; listed here only so the choice is deliberate.
+### 9. Memory entry title — done
+- `MemoryEntryOut.title`: the concepts joined, else the first sentence of the content, capped at 80 characters.
 
-### 10. Clash resolution by the signed-in user
-- **Already works:** `resolved_by` may be sent as `""` or `"human"` and the backend substitutes the caller's email. No change; documented here so the frontend does not build a "who are you" field.
+### 10. Clash resolution by the signed-in user — already worked
+- `resolved_by` may be `""` or `"human"`; the backend substitutes the caller's email.
 
 ## B. Operational gaps (carried from qa.md)
 
-- **Email delivery for magic links.** Non-GitHub sign-in on the frontend depends on it; dev mode returns the link in the response.
-- **Encryption at rest** for stored GitHub OAuth and Notion tokens.
-- **Background PR sync** scheduler (the endpoint exists; nothing calls it periodically).
-- **Register the real GitHub webhook** URL and secret once deployed.
-- **Metering and billing.** Pricing tiers on the landing page are not enforced anywhere.
-- **Unexercised with real keys:** OpenAI embeddings, Notion, live stance extraction in the current environment.
+- **Email delivery — done.** `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` / `SMTP_STARTTLS` in `.env`. Magic links and emailed invites go out through it; responses carry `sent` / `email_sent` so the UI can say "check your inbox" or "copy this link". Without `SMTP_HOST` the link is logged, and `/api/auth/providers` only offers magic links when SMTP is configured or `DEV_AUTH=true`.
+- **Encryption at rest — done.** GitHub OAuth tokens and Notion tokens are Fernet-encrypted (`app/db/crypto.py`, `TOKEN_ENCRYPTION_KEY`, comma-separate keys to rotate). Rows written before this build are read as plaintext and rewritten by `python -m scripts.encrypt_tokens`.
+- **Background PR sync — done.** `PR_SYNC_INTERVAL_SECONDS` (default 300, 0 disables) runs `sync_open_prs` over every live project with a repository from the app lifespan.
+- **Register the real GitHub webhook** URL and secret once deployed. Deployment step, not code.
+- **Metering and billing.** Pricing tiers on the landing page are not enforced anywhere. Product decision first.
+- **Unexercised with real keys:** OpenAI embeddings, Notion, live stance extraction in the current environment, SMTP against a real server.
 
 ## C. Frontend assumptions that need no backend change
 
 - **Sign-in comes first.** The mock creates an organisation from a name and org name with no account. The backend requires a signed-in user (`/api/auth/*`) before `POST /api/orgs`; the frontend adds a sign-in step.
 - **Invite link format.** Use the `url` returned by `POST /api/orgs/{id}/invites` (`FRONTEND_URL/invite/{token}`), not the mock's `https://consensus.ai/join?org=&token=`.
-- **Add member by name and email.** Maps to creating an invite for that email. Users are created when they sign in and accept; there is no direct user creation.
+- **Add member by name and email.** Maps to creating an invite for that email (now also emailed when SMTP is configured). Users are created when they sign in and accept.
 - **Shift team domain.** Maps to the org-level `auto_join_domain` via `PATCH /api/orgs/{id}`. No per-team domain.
 - **Conflict resolution options.** `a_proceeds`, `b_proceeds`, `both_with_note` with a note, not free-text architecture choices.
 - **"Agent velocity 87%" and per-agent "progress %"** have no data source. Use `counters.tokens_saved` and `counters.clashes_caught` instead.
 - **WebSocket auth** uses `?token=` because browsers cannot set headers.
 - **CORS** already allows `localhost:5173`; in dev the Vite proxy makes calls same-origin anyway.
+
+## Frontend client additions
+
+`frontend/src/lib/api.ts` on the `Frontend` branch predates this work. Add:
+
+```ts
+projectApi.activity  = (id, f: {limit?: number; before?: string; type?: string} = {}) => get<StreamFrame[]>(`/api/projects/${id}/activity${q(f)}`)
+projectApi.archive   = (id) => del<void>(`/api/projects/${id}`)
+projectApi.restore   = (id) => post<Project>(`/api/projects/${id}/restore`)
+projectApi.createTask = (id, b: {title: string; external_ref?: string; status?: TaskStatus}) => post<Task>(`/api/projects/${id}/tasks`, b)
+projectApi.updateTask = (id, taskId, b: {title?: string; external_ref?: string; status?: TaskStatus; assignee_agent?: string}) => patch<Task>(`/api/projects/${id}/tasks/${taskId}`, b)
+projectApi.deleteTask = (id, taskId) => del<void>(`/api/projects/${id}/tasks/${taskId}`)
+orgApi.summary       = (orgId) => get<OrgSummary>(`/api/orgs/${orgId}/summary`)
+orgApi.updateMember  = (orgId, userId, b: {role?: Role; status?: 'active' | 'restricted'}) => patch<Membership>(`/api/orgs/${orgId}/members/${userId}`, b)
+orgApi.archiveProject = (orgId, pid) => del<void>(`/api/orgs/${orgId}/projects/${pid}`)
+```
+
+and extend the types: `Agent` gains `status`, `open_claims`, `current_claim`; `Task` gains `status`, `assignee_agent_id`, `assignee_agent`, `created_at`; `Clash` gains `title`, `explanation`, `severity_label`; `MemoryEntry` gains `title`; `Project` gains `archived_at`; `Membership` gains `status`; `Invite` gains `email_sent`.
