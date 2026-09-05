@@ -127,6 +127,8 @@ async def test_frontend_build_is_served_from_the_same_origin(tmp_path, monkeypat
         assert (await c.get("/assets/app.js")).text == "console.log(1)"
         assert (await c.get("/api/auth/providers")).status_code == 200  # API untouched
         assert (await c.get("/docs")).status_code == 200
+        spec = (await c.get("/openapi.json")).json()
+        assert spec["components"]["securitySchemes"]["bearerAuth"]["scheme"] == "bearer" and spec["security"] == [{"bearerAuth": []}]
         assert (await c.get("/../etc/passwd")).text == "<html>SPA</html>"  # no path escape
 
     # without a build, the placeholder pages and the JSON root are what you get

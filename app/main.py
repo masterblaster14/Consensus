@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
@@ -114,6 +115,24 @@ def create_app() -> FastAPI:
         if isinstance(route, Route) and route.path == "/mcp":
             route = Route(route.path, endpoint=MCPAuthMiddleware(route.endpoint), methods=route.methods)
         app.router.routes.append(route)
+
+    # Every route takes `Authorization: Bearer <session JWT or csk_ API key>` through its own
+    # dependency, which FastAPI cannot see. Declare the scheme so /docs shows an Authorize button
+    # and sends the header; runtime authentication is unchanged.
+    def openapi_with_bearer() -> dict:
+        if app.openapi_schema:
+            return app.openapi_schema
+        schema = get_openapi(title=app.title, version=app.version, description=app.description, routes=app.routes)
+        schema.setdefault("components", {}).setdefault("securitySchemes", {})["bearerAuth"] = {
+            "type": "http",
+            "scheme": "bearer",
+            "description": "Session token from sign-in (GitHub / magic link / dev login) or a csk_ API key.",
+        }
+        schema["security"] = [{"bearerAuth": []}]
+        app.openapi_schema = schema
+        return schema
+
+    app.openapi = openapi_with_bearer  # type: ignore[method-assign]
 
     if frontend is not None:
         # Same-origin frontend: hashed assets as static files, every other unknown path -> index.html
