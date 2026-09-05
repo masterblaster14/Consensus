@@ -53,6 +53,8 @@ claude mcp add --transport http consensus https://consensus-production-aed6.up.r
 { "mcpServers": { "consensus": { "url": "https://consensus-production-aed6.up.railway.app/mcp", "headers": { "Authorization": "Bearer csk_..." } } } }
 ```
 
+Listed in the [MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.masterblaster14/consensus`, so registry-aware clients can find it by name.
+
 Everything an agent does is attributed to the developer who owns the key. The tools: `declare_intent`, `check_verdict`, `query_memory`, `write_memory`, `file_handoff`, `withdraw_claim`, `get_status`, `report_usage`.
 
 ## Teams and integrations

@@ -63,6 +63,7 @@ The single queue of backend work. Section A came from reviewing the merged front
 - **Background PR sync — done.** `PR_SYNC_INTERVAL_SECONDS` (default 300, 0 disables) runs `sync_open_prs` over every live project with a repository from the app lifespan.
 - **Deployment — packaged.** Dockerfile, entrypoint that migrates on boot, `render.yaml` blueprint, compose `full` profile, CI workflow. Steps and the safety settings are in [deploy.md](deploy.md). Hosting it is the remaining manual step.
 - **GitHub webhook — automatic** since item 13; `GITHUB_WEBHOOK_SECRET` is only needed for hooks registered by hand.
+- **Distribution — done.** Claude Code plugin installs from the repo (`claude plugin marketplace add masterblaster14/Consensus`, verified); `io.github.masterblaster14/consensus` is published in the MCP Registry. Directory listings that need a web account (Smithery, Glama, PulseMCP, Cursor's directory) remain manual.
 - **Metering and billing.** Pricing tiers on the landing page are not enforced anywhere. Product decision first.
 - **Unexercised with real keys:** OpenAI embeddings, Notion, live stance extraction in the current environment, SMTP against a real server.
 
