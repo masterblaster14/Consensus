@@ -30,12 +30,37 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 `DATABASE_URL` from Render is `postgres://…`; the app rewrites that to the asyncpg dialect itself.
 
-## Option B: Railway
+## Option B: Railway (step by step)
 
-1. New project from the GitHub repo. Railway detects the Dockerfile.
-2. Add **PostgreSQL** (choose the pgvector template, or run `CREATE EXTENSION vector` on a plain one) and **Redis** from the service catalog. Railway injects `DATABASE_URL` and `REDIS_URL` into the app service when you reference them.
-3. Set the variables from the table above plus the API keys and `FRONTEND_URL` / `CORS_ORIGINS`.
-4. Generate a public domain for the app service.
+`railway.json` tells Railway to build the Dockerfile and health-check `/health`. The app reads `PORT` from Railway.
+
+1. **New project from GitHub.** Railway dashboard, **New Project**, **Deploy from GitHub repo**, pick `masterblaster14/Consensus`, branch `main`. It will start a build straight away; that first deploy fails on the health check because there is no database yet. That is expected.
+2. **Add Postgres with pgvector.** In the project canvas, **Create**, **Database**, **PostgreSQL**. Once it is up, open its **Data** tab (or connect with `psql` using the `DATABASE_PUBLIC_URL` variable) and run `CREATE EXTENSION IF NOT EXISTS vector;`. If that errors because the image lacks pgvector, delete it and instead **Create**, **Template**, search **pgvector** and deploy that template; it exposes the same `DATABASE_URL` variable.
+3. **Add Redis.** **Create**, **Database**, **Redis**.
+4. **Wire the app to them.** Open the app service, **Variables**, **Add Reference** twice: `DATABASE_URL` from the Postgres service and `REDIS_URL` from the Redis service. Railway inserts `${{Postgres.DATABASE_URL}}` style references; leave them as they are. The app rewrites `postgres://` to the asyncpg dialect itself.
+5. **Set the rest of the variables** on the app service (**Raw Editor** is fastest):
+
+   ```
+   DEV_AUTH=false
+   MCP_AUTH_REQUIRED=true
+   SECRET_KEY=<output of the first command above>
+   TOKEN_ENCRYPTION_KEY=<output of the second command above>
+   STANCE_PROVIDER=anthropic
+   ANTHROPIC_API_KEY=<key>
+   EMBEDDING_PROVIDER=openai
+   OPENAI_API_KEY=<key>
+   FRONTEND_URL=https://<app domain>            # step 6; the backend's own URL until the frontend is hosted
+   CORS_ORIGINS=https://<app domain>            # add the frontend origin when it exists
+   SEED_DEMO=true                               # first boot only; flip to false afterwards
+   LOG_LEVEL=INFO
+   ```
+
+   No OpenAI key? Set `EMBEDDING_PROVIDER=hashing`; clash detection then relies on concept names alone, which is fine for the demo scenario and weaker for free-form plans.
+6. **Public domain.** App service, **Settings**, **Networking**, **Generate Domain** (port 8000). Put that URL into `FRONTEND_URL` and `CORS_ORIGINS`, then **Deploy**.
+7. **Check it.** `https://<app domain>/health` should return `{"status":"ok","database":true,"redis":true}`. Open **Deploy Logs**: with `SEED_DEMO=true` the seed prints the demo organisation, project and an **admin API key**. Copy that key, then set `SEED_DEMO=false` so later boots skip the seed.
+8. **Connect an agent** with that key (step 3 of the post-deploy checklist below), and register the GitHub webhook and OAuth app against the new domain (steps 4 and 5).
+
+Railway redeploys on every push to `main`. Migrations run inside the container on each boot, so schema changes ship with the code.
 
 ## Option C: Fly.io or any Docker host
 
