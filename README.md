@@ -64,7 +64,7 @@ Setup details, configuration and the full API: [Backend reference](docs/backend-
 - [Getting started](docs/getting-started.md)
 - [How it works](docs/how-it-works.md)
 - [Features](docs/features.md)
-- [Pitch briefing](docs/pitch.md)
+- [Pitch briefing](docs/pitch.md) and [Q&A](docs/qa.md)
 - [Demo script](docs/demo-script.md) and [demo runbook](docs/demo-runbook.md)
 - [Backend reference](docs/backend-reference.md)
 - [Pricing](docs/pricing.md)
