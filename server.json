@@ -11,7 +11,7 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://CONSENSUS_HOST/mcp",
+      "url": "https://consensus-production-aed6.up.railway.app/mcp",
       "headers": [
         {
           "name": "Authorization",

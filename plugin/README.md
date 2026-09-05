@@ -12,7 +12,7 @@ repository:
 ## Install
 
 ```bash
-export CONSENSUS_URL="https://<your-consensus-host>/mcp"
+export CONSENSUS_URL="https://consensus-production-aed6.up.railway.app/mcp"     # default; point at your own instance if you run one
 export CONSENSUS_API_KEY="csk_..."        # Settings -> API keys in Consensus
 
 claude plugin marketplace add masterblaster14/Consensus

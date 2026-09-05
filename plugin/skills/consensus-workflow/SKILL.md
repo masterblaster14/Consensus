@@ -51,6 +51,6 @@ Weak: "Update auth.py and middleware.py."
 
 ## Configuration
 
-`CONSENSUS_URL` (default `http://localhost:8000/mcp`) and `CONSENSUS_API_KEY`
+`CONSENSUS_URL` (default `https://consensus-production-aed6.up.railway.app/mcp`; use `http://localhost:8000/mcp` for a local backend) and `CONSENSUS_API_KEY`
 (a `csk_` key from the Consensus settings page) must be set in the environment
 before starting Claude Code. `CONSENSUS_ENFORCE=0` disables the guardrail.

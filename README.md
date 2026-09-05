@@ -36,7 +36,7 @@ Consensus is an MCP server. Each developer creates a personal API key (settings 
 **Claude Code, with the guardrail** (recommended). The plugin adds the server, a skill that teaches the workflow, and a hook that refuses `Edit`/`Write` until the plan is declared and the verdict allows it:
 
 ```bash
-export CONSENSUS_URL="https://<host>/mcp" CONSENSUS_API_KEY="csk_..."
+export CONSENSUS_API_KEY="csk_..."          # CONSENSUS_URL defaults to the hosted instance
 claude plugin marketplace add masterblaster14/Consensus
 claude plugin install consensus@consensus
 ```
@@ -44,13 +44,13 @@ claude plugin install consensus@consensus
 **Claude Code, server only:**
 
 ```bash
-claude mcp add --transport http consensus https://<host>/mcp --header "Authorization: Bearer csk_..."
+claude mcp add --transport http consensus https://consensus-production-aed6.up.railway.app/mcp --header "Authorization: Bearer csk_..."
 ```
 
 **Cursor, Windsurf, any MCP client.** Add to the client's MCP config:
 
 ```json
-{ "mcpServers": { "consensus": { "url": "https://<host>/mcp", "headers": { "Authorization": "Bearer csk_..." } } } }
+{ "mcpServers": { "consensus": { "url": "https://consensus-production-aed6.up.railway.app/mcp", "headers": { "Authorization": "Bearer csk_..." } } } }
 ```
 
 Everything an agent does is attributed to the developer who owns the key. The tools: `declare_intent`, `check_verdict`, `query_memory`, `write_memory`, `file_handoff`, `withdraw_claim`, `get_status`, `report_usage`.
@@ -61,6 +61,8 @@ Everything an agent does is attributed to the developer who owns the key. The to
 - One shared live board per repository.
 - GitHub: handoffs open pull requests, rulings become PR comments, merged PRs retire their plans.
 - Notion: tasks sync in, decisions and rulings mirror out.
+
+Hosted instance: `https://consensus-production-aed6.up.railway.app` (API docs at `/docs`, live board at `/board`).
 
 ## Running it
 
