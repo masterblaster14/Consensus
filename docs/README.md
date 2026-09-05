@@ -13,8 +13,9 @@ Markdown pages intended for the landing site. Each file is self-contained and ca
 | Demo script | [demo-script.md](demo-script.md) | Presenter's script: what to show, what to say, fallbacks, reset |
 | Demo runbook | [demo-runbook.md](demo-runbook.md) | How to run the backend and demonstrate every integration without a frontend (built-in /board page, scripts) |
 | Backend reference | [backend-reference.md](backend-reference.md) | Developer reference: setup, layout, verdict internals, MCP tools, REST/WS contracts, auth, integrations |
+| Backend pending | [backend-pending.md](backend-pending.md) | The single queue of backend changes: what the frontend needs, operational gaps, and frontend assumptions that need no backend work |
 
-The top-level [README](../README.md) describes the product; the developer-facing reference is [backend-reference.md](backend-reference.md).
+The top-level [README](../README.md) describes the product; the developer-facing reference is [backend-reference.md](backend-reference.md). The web app lives in [frontend/](../frontend/README.md); its README lists what is built and what is left.
 
 Notes for whoever builds the pages:
 
