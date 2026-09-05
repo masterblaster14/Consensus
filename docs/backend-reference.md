@@ -171,7 +171,9 @@ All JSON. CORS is enabled for `CORS_ORIGINS` (default: localhost:3000 and :5173)
 ```
 GET  /api/projects?include_archived=            [ProjectOut]   (archived hidden by default)
 POST /api/projects                              {name, repo_full_name?, id?} -> ProjectOut
-GET  /api/projects/{id}                         ProjectOut  (archived_at set = soft-deleted)
+GET  /api/projects/{id}                         ProjectOut  (archived_at set = soft-deleted; webhook_id once the merge hook is registered)
+PATCH /api/projects/{id}                        {name?, repo_full_name?} (admin) -> ProjectOut + webhook {registered, hook_id, url, reason}
+POST /api/projects/{id}/integrations/github/webhook   (re)register the merge webhook -> {registered, hook_id, url, reason}
 DELETE /api/projects/{id}                       archive (admin): hidden, rejects writes, reads keep working
 POST /api/projects/{id}/restore                 ProjectOut
 GET  /api/projects/{id}/agents                  [AgentOut]  + status working|reviewing|idle, open_claims, current_claim
@@ -209,6 +211,10 @@ Resolution semantics: `a_proceeds` = the earlier claim (`claim_a`) proceeds; `b_
 
 Full schemas: `GET /openapi.json` or [app/schemas.py](../app/schemas.py).
 
+## Serving the frontend from the same origin
+
+When `FRONTEND_DIST` (default `frontend/dist`) contains an `index.html`, the app serves it at `/`, serves `/assets` as static files, and returns `index.html` for every path that is not an API, MCP, WebSocket, docs or board route, so client-side routes survive a refresh. The placeholder dev pages and the JSON root are not registered in that mode. The Dockerfile builds `frontend/` when the source tree has one, so a deploy from a branch that carries the frontend ships it automatically. Set `FRONTEND_URL` to the same origin.
+
 ## WebSocket `/ws/projects/{id}`
 
 Every frame:
@@ -234,7 +240,7 @@ Every published frame is also stored in the `events` table and served by `GET /a
 
 ## Integrations
 
-- **GitHub** (`ENABLE_GITHUB`; token from the org's connected admin or `GITHUB_TOKEN`; project needs `repo_full_name`): `file_handoff` opens (or updates) a PR from `claim.branch` with the intent, changed/untouched lists, assumptions, uncertainties and clash resolutions. Resolving a clash comments on the related PR. `sync_open_prs` creates `in_review` claims for untracked PRs; it also runs in the background every `PR_SYNC_INTERVAL_SECONDS` (default 300, 0 disables) over every live project with a repository (`app/core/scheduler.py`). The same scheduler retires open claims older than `CLAIM_TTL_HOURS` (default 72, 0 disables) that never reached a PR, releasing any clash they blocked.
+- **GitHub** (`ENABLE_GITHUB`; token from the org's connected admin or `GITHUB_TOKEN`; project needs `repo_full_name`, set at creation or with `PATCH /api/projects/{id}`). **The merge webhook registers itself**: whenever a repository is attached to a project, or an admin connects GitHub to an organisation that already has projects with repositories, the backend creates (or updates) a `pull_request` hook on the repo pointing at `PUBLIC_URL/api/webhooks/github` with a per-project secret (`projects.webhook_secret`). The handler accepts that secret or the global `GITHUB_WEBHOOK_SECRET`. If registration cannot happen (GitHub not connected, no admin rights on the repo, no public URL) the response's `webhook.reason` says so and `POST /api/projects/{id}/integrations/github/webhook` retries it later. `file_handoff` opens (or updates) a PR from `claim.branch` with the intent, changed/untouched lists, assumptions, uncertainties and clash resolutions. Resolving a clash comments on the related PR. `sync_open_prs` creates `in_review` claims for untracked PRs; it also runs in the background every `PR_SYNC_INTERVAL_SECONDS` (default 300, 0 disables) over every live project with a repository (`app/core/scheduler.py`). The same scheduler retires open claims older than `CLAIM_TTL_HOURS` (default 72, 0 disables) that never reached a PR, releasing any clash they blocked.
 - **Stance model.** `STANCE_MODEL` defaults to `claude-sonnet-5` (about a second per extraction). If the API call fails after the client's retries, the declaration continues with the offline keyword extractor and the fallback is logged, so an outage degrades accuracy rather than blocking agents. Webhook `pull_request.closed` retires the claim (HMAC verified with `GITHUB_WEBHOOK_SECRET`).
 - **Notion** (`ENABLE_NOTION`; token + tasks database id from the org settings or `NOTION_TOKEN` / `NOTION_TASKS_DB_ID`): `sync_tasks` upserts tasks from the database; `decision`, `dead_end` and `ruling` entries are mirrored as pages.
 

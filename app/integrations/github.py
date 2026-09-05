@@ -233,6 +233,119 @@ async def sync_open_prs(project_id: uuid.UUID) -> int:
     return created
 
 
+# -- webhook registration -----------------------------------------------------------
+
+
+@dataclass
+class WebhookStatus:
+    registered: bool
+    hook_id: int | None = None
+    url: str | None = None
+    reason: str | None = None
+
+
+def webhook_url() -> str | None:
+    """Where GitHub should deliver: PUBLIC_URL, else FRONTEND_URL when it is not a local address."""
+    settings = get_settings()
+    base = (settings.public_url or settings.frontend_url or "").rstrip("/")
+    if not base or "localhost" in base or "127.0.0.1" in base:
+        return None
+    return f"{base}/api/webhooks/github"
+
+
+async def ensure_webhook(project_id: uuid.UUID) -> WebhookStatus:
+    """Register the pull_request webhook on the project's repository, or update the one already
+    pointing at this server. Each project gets its own secret. Idempotent. Never raises: the
+    outcome comes back as a status the UI can show ("connect GitHub first", "needs admin")."""
+    from app.core.auth import new_opaque_token
+    from app.db.models import Project
+    from app.db.session import session_scope
+
+    settings = get_settings()
+    if not settings.enable_github:
+        return WebhookStatus(False, reason="GitHub integration is disabled (ENABLE_GITHUB)")
+    creds = await _creds_for_project(project_id)
+    if not creds.repo:
+        return WebhookStatus(False, reason="project has no repository")
+    if not creds.token:
+        return WebhookStatus(False, reason="no GitHub token: an organisation admin must connect GitHub first")
+    url = webhook_url()
+    if url is None:
+        return WebhookStatus(False, reason="backend has no public URL (set PUBLIC_URL); register the webhook by hand")
+    try:
+        async with session_scope() as db:
+            project = await db.get(Project, project_id)
+            if project is None:
+                return WebhookStatus(False, reason="project not found")
+            if not project.webhook_secret:
+                project.webhook_secret = new_opaque_token(32)
+            secret = project.webhook_secret
+        config = {"url": url, "content_type": "json", "secret": secret, "insecure_ssl": "0"}
+        async with _client(creds.token) as client:
+            r = await client.get(f"/repos/{creds.repo}/hooks", params={"per_page": 100})
+            if r.status_code in (403, 404):
+                return WebhookStatus(
+                    False, url=url,
+                    reason=f"GitHub refused ({r.status_code}): the connected account needs admin rights on {creds.repo} to manage webhooks",
+                )
+            r.raise_for_status()
+            existing = next((h for h in r.json() if (h.get("config") or {}).get("url") == url), None)
+            if existing:
+                r = await client.patch(
+                    f"/repos/{creds.repo}/hooks/{existing['id']}",
+                    json={"active": True, "events": ["pull_request"], "config": config},
+                )
+            else:
+                r = await client.post(
+                    f"/repos/{creds.repo}/hooks",
+                    json={"name": "web", "active": True, "events": ["pull_request"], "config": config},
+                )
+            r.raise_for_status()
+            hook_id = int(r.json()["id"])
+        async with session_scope() as db:
+            project = await db.get(Project, project_id)
+            if project is not None:
+                project.webhook_id = hook_id
+        log.info("webhook %s registered on %s for project %s", hook_id, creds.repo, project_id)
+        return WebhookStatus(True, hook_id=hook_id, url=url)
+    except Exception as e:
+        log.exception("webhook registration failed for project %s", project_id)
+        return WebhookStatus(False, url=url, reason=f"{type(e).__name__}: {e}")
+
+
+async def ensure_webhooks_for_org(org_id: uuid.UUID) -> dict[str, WebhookStatus]:
+    """After an admin connects GitHub: register hooks for every live project with a repository."""
+    from sqlalchemy import select
+
+    from app.db.models import Project
+    from app.db.session import session_scope
+
+    async with session_scope() as db:
+        ids = (
+            await db.execute(
+                select(Project.id).where(Project.org_id == org_id, Project.repo_full_name.is_not(None), Project.archived_at.is_(None))
+            )
+        ).scalars().all()
+    return {str(pid): await ensure_webhook(pid) for pid in ids}
+
+
+async def webhook_secrets_for_repo(repo_full_name: str) -> list[str]:
+    from sqlalchemy import select
+
+    from app.db.models import Project
+    from app.db.session import session_scope
+
+    if not repo_full_name:
+        return []
+    async with session_scope() as db:
+        rows = (
+            await db.execute(
+                select(Project.webhook_secret).where(Project.repo_full_name == repo_full_name, Project.webhook_secret.is_not(None))
+            )
+        ).scalars().all()
+    return [s for s in rows if s]
+
+
 # -- webhook -----------------------------------------------------------------------
 
 

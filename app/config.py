@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production"          # signs session JWTs
     jwt_ttl_hours: int = 24 * 7
     frontend_url: str = "http://localhost:5173"          # OAuth / magic-link redirects land here
+    # The backend's own public origin (e.g. https://consensus.example.com). Used for the GitHub
+    # webhook URL it registers on repositories. Falls back to FRONTEND_URL when they share a host.
+    public_url: str | None = None
+    # A built frontend at this path (index.html inside) is served from / with SPA fallback.
+    frontend_dist: str = "frontend/dist"
     github_client_id: str | None = None
     github_client_secret: str | None = None
     github_oauth_scopes: str = "read:user user:email repo"

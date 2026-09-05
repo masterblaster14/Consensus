@@ -1,6 +1,6 @@
 # Deploying Consensus
 
-The backend is one container. It needs PostgreSQL with the pgvector extension and Redis. Everything else is environment variables. The frontend is a separate static build and can come later; until then the backend's own `/board` page and `/docs` work against the hosted instance.
+The backend is one container. It needs PostgreSQL with the pgvector extension and Redis. Everything else is environment variables. The frontend ships inside the same container: the Dockerfile builds `frontend/` when the branch being deployed has one and the app serves it from `/` on the same origin, so there is no second service and no CORS. Until the frontend lands, the backend's own `/board` page and `/docs` work against the hosted instance.
 
 ## Before anything else
 
@@ -51,6 +51,7 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
    OPENAI_API_KEY=<key>
    FRONTEND_URL=https://<app domain>            # step 6; the backend's own URL until the frontend is hosted
    CORS_ORIGINS=https://<app domain>            # add the frontend origin when it exists
+   PUBLIC_URL=https://<app domain>              # webhook target the backend registers on repositories
    SEED_DEMO=true                               # first boot only; flip to false afterwards
    LOG_LEVEL=INFO
    ```
@@ -93,8 +94,8 @@ Brings up Postgres, Redis and the app on port 8000, reading `.env` for keys. Thi
    claude mcp add --transport http consensus https://<host>/mcp --header "Authorization: Bearer csk_..."
    ```
    or install the plugin (`claude plugin marketplace add masterblaster14/Consensus && claude plugin install consensus@consensus`), which also adds the edit guardrail.
-4. **GitHub webhook**: in the repository's settings add a webhook for `https://<host>/api/webhooks/github`, content type JSON, secret = `GITHUB_WEBHOOK_SECRET`, event **Pull requests**. Merged PRs then retire their claims.
-5. **GitHub sign-in**: register an OAuth app with callback `https://<host>/api/auth/github/callback`, set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`.
+4. **GitHub sign-in**: register an OAuth app with callback `https://<host>/api/auth/github/callback`, set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`. Sign in with the account that will administer the organisation and call the org's GitHub connect endpoint once.
+5. **Repositories**: create a project and pick a repo (or `PATCH /api/projects/{id}` with `repo_full_name`). The merge webhook is registered on the repository automatically with its own secret, as long as `PUBLIC_URL` is set and the connected account has admin rights on the repo. The response says whether it worked. Nothing to configure in GitHub by hand.
 6. **Email**: set the `SMTP_*` variables so magic links and invites are delivered. Without them the providers endpoint hides magic-link sign-in.
 
 ## What runs in the background

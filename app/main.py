@@ -4,9 +4,12 @@ from __future__ import annotations
 import contextlib
 import logging
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from app.api import auth, board, claims, clashes, devpages, keys, memory, orgs, projects, stream, webhooks
@@ -41,8 +44,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await dispose_engine()
 
 
+def frontend_dir() -> Path | None:
+    """The built frontend, when the deployment carries one (Dockerfile builds frontend/ if present)."""
+    p = Path(get_settings().frontend_dist).expanduser()
+    if not p.is_absolute():
+        p = Path(__file__).resolve().parent.parent / p
+    return p if (p / "index.html").is_file() else None
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
+    frontend = frontend_dir()
     app = FastAPI(
         title="Consensus",
         version="0.1.0",
@@ -58,7 +70,7 @@ def create_app() -> FastAPI:
     )
 
     @app.get("/", tags=["ops"], include_in_schema=False)
-    async def root() -> dict:
+    async def root() -> dict:  # replaced by the SPA when a frontend build is present
         return {
             "service": "consensus",
             "health": "/health",
@@ -92,7 +104,8 @@ def create_app() -> FastAPI:
     app.include_router(clashes.router)
     app.include_router(webhooks.router)
     app.include_router(stream.router)
-    app.include_router(devpages.router)
+    if frontend is None:
+        app.include_router(devpages.router)  # placeholder pages until the real frontend is built in
     app.include_router(board.router)
 
     # Agent-facing MCP endpoint: POST/GET/DELETE http://host:port/mcp
@@ -101,6 +114,24 @@ def create_app() -> FastAPI:
         if isinstance(route, Route) and route.path == "/mcp":
             route = Route(route.path, endpoint=MCPAuthMiddleware(route.endpoint), methods=route.methods)
         app.router.routes.append(route)
+
+    if frontend is not None:
+        # Same-origin frontend: hashed assets as static files, every other unknown path -> index.html
+        # so client-side routes (/app/dashboard, /invite/<token>, /auth/callback) work on refresh.
+        # API, MCP, WebSocket, docs and board routes are registered above and take precedence.
+        app.router.routes = [r for r in app.router.routes if getattr(r, "path", None) != "/"]
+        if (frontend / "assets").is_dir():
+            app.mount("/assets", StaticFiles(directory=frontend / "assets"), name="assets")
+        index = frontend / "index.html"
+
+        @app.get("/{path:path}", include_in_schema=False)
+        async def spa(path: str):
+            candidate = (frontend / path).resolve() if path else index
+            if path and candidate.is_file() and str(candidate).startswith(str(frontend.resolve())):
+                return FileResponse(candidate)
+            return FileResponse(index)
+
+        log.info("serving frontend from %s", frontend)
     return app
 
 

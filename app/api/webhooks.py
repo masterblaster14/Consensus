@@ -8,7 +8,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 
 from app.db.session import CommittingRoute
 from app.config import get_settings
-from app.integrations.github import handle_pull_request_closed, verify_signature
+from app.integrations.github import handle_pull_request_closed, verify_signature, webhook_secrets_for_repo
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"], route_class=CommittingRoute)
@@ -21,12 +21,16 @@ async def github_webhook(
     x_hub_signature_256: str | None = Header(default=None),
 ) -> dict:
     body = await request.body()
-    if not verify_signature(get_settings().github_webhook_secret, body, x_hub_signature_256):
-        raise HTTPException(status_code=401, detail="bad signature")
     try:
         payload = json.loads(body or b"{}")
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="invalid json")
+    repo = (payload.get("repository") or {}).get("full_name") or ""
+    # Hooks the backend registered itself carry a per-project secret; a hand-registered hook
+    # uses GITHUB_WEBHOOK_SECRET. Either is accepted. With no secret anywhere (dev), deliveries pass.
+    secrets = [s for s in (get_settings().github_webhook_secret,) if s] + await webhook_secrets_for_repo(repo)
+    if secrets and not any(verify_signature(s, body, x_hub_signature_256) for s in secrets):
+        raise HTTPException(status_code=401, detail="bad signature")
 
     if x_github_event == "ping":
         return {"ok": True, "event": "ping"}

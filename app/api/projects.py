@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from dataclasses import asdict
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -26,7 +27,9 @@ from app.schemas import (
     EventFrame,
     ProjectCreate,
     ProjectOut,
+    ProjectUpdate,
     StatusOut,
+    WebhookStatusOut,
     TaskCreate,
     TaskOut,
     TaskUpdate,
@@ -34,6 +37,18 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/api", tags=["projects"], route_class=CommittingRoute)
+
+
+async def _attach_webhook(out: ProjectOut, db: AsyncSession, project: Project) -> ProjectOut:
+    """After a write that attached a repository: commit so the integration sees it, then register."""
+    from app.integrations.github import ensure_webhook
+
+    await db.commit()
+    status = await ensure_webhook(project.id)
+    await db.refresh(project)
+    out = ProjectOut.model_validate(project)
+    out.webhook = WebhookStatusOut(**asdict(status))
+    return out
 
 
 def _check_write_http(principal: Principal | None, project: Project) -> None:
@@ -86,17 +101,58 @@ async def create_project(body: ProjectCreate, principal: Principal = Depends(req
         org_id = principal.org_ids[0]
     if not principal.is_member(org_id):
         raise HTTPException(status_code=403, detail="not a member of that organisation")
-    project = Project(org_id=org_id, name=body.name, repo_full_name=body.repo_full_name)
+    project = Project(org_id=org_id, name=body.name, repo_full_name=(body.repo_full_name or "").strip() or None)
     if body.id:
         project.id = body.id
     db.add(project)
     await db.flush()
-    return ProjectOut.model_validate(project)
+    out = ProjectOut.model_validate(project)
+    if project.repo_full_name:
+        out = await _attach_webhook(out, db, project)
+    return out
 
 
 @router.get("/projects/{project_id}", response_model=ProjectOut)
 async def get_project_route(project: Project = Depends(get_project)) -> ProjectOut:
     return ProjectOut.model_validate(project)
+
+
+@router.patch("/projects/{project_id}", response_model=ProjectOut)
+async def update_project(
+    body: ProjectUpdate,
+    project: Project = Depends(get_project),
+    principal: Principal = Depends(require_principal),
+    db: AsyncSession = Depends(get_db),
+) -> ProjectOut:
+    """Rename a project or attach / change / detach its repository (admin). Attaching a repository
+    registers the merge webhook on it when the organisation has GitHub connected; the response's
+    `webhook` says whether that worked and, if not, what to do."""
+    await _require_project_admin(project, principal)
+    _check_write_http(principal, project)
+    if body.name is not None:
+        project.name = body.name.strip()
+    repo_changed = False
+    if body.repo_full_name is not None:
+        new_repo = body.repo_full_name.strip() or None
+        if new_repo != project.repo_full_name:
+            project.repo_full_name = new_repo
+            project.webhook_id = None
+            repo_changed = True
+    await db.flush()
+    out = ProjectOut.model_validate(project)
+    if repo_changed and project.repo_full_name:
+        out = await _attach_webhook(out, db, project)
+    return out
+
+
+@router.post("/projects/{project_id}/integrations/github/webhook", response_model=WebhookStatusOut)
+async def register_webhook(project: Project = Depends(get_project), principal: Principal = Depends(require_principal)) -> WebhookStatusOut:
+    """(Re)register the merge webhook on the project's repository. Use after connecting GitHub to an
+    organisation whose projects already had repositories, or after fixing repository permissions."""
+    from app.integrations.github import ensure_webhook
+
+    await _require_project_admin(project, principal)
+    return WebhookStatusOut(**asdict(await ensure_webhook(project.id)))
 
 
 @router.delete("/projects/{project_id}", status_code=204)

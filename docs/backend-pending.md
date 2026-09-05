@@ -50,13 +50,19 @@ The single queue of backend work. Section A came from reviewing the merged front
 ### 12. Demo resilience — done
 - Stance extraction falls back to the keyword extractor when the model call fails; `STANCE_MODEL` defaults to `claude-sonnet-5` for latency; `DATABASE_URL` accepts the `postgres://` form hosted providers hand out.
 
+### 13. Repository wiring — done
+- `PATCH /api/projects/{id} {name?, repo_full_name?}` (admin) attaches or changes a project's repository after creation. Attaching one registers the merge webhook automatically with a per-project secret; `POST /api/projects/{id}/integrations/github/webhook` retries. Connecting GitHub to an org registers hooks for every project that already has a repo. The frontend's project settings page needs `projectApi.update(id, {name?, repo_full_name?})` and `projectApi.registerWebhook(id)`, and should show `webhook.reason` when `registered` is false.
+
+### 14. Frontend served from the backend — done
+- A `frontend/dist` build is served from `/` with SPA fallback; the Dockerfile builds it when present. Deploying the `Frontend` branch (or merging it) puts the app on the hosted domain with no extra service.
+
 ## B. Operational gaps (carried from qa.md)
 
 - **Email delivery — done.** `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` / `SMTP_STARTTLS` in `.env`. Magic links and emailed invites go out through it; responses carry `sent` / `email_sent` so the UI can say "check your inbox" or "copy this link". Without `SMTP_HOST` the link is logged, and `/api/auth/providers` only offers magic links when SMTP is configured or `DEV_AUTH=true`.
 - **Encryption at rest — done.** GitHub OAuth tokens and Notion tokens are Fernet-encrypted (`app/db/crypto.py`, `TOKEN_ENCRYPTION_KEY`, comma-separate keys to rotate). Rows written before this build are read as plaintext and rewritten by `python -m scripts.encrypt_tokens`.
 - **Background PR sync — done.** `PR_SYNC_INTERVAL_SECONDS` (default 300, 0 disables) runs `sync_open_prs` over every live project with a repository from the app lifespan.
 - **Deployment — packaged.** Dockerfile, entrypoint that migrates on boot, `render.yaml` blueprint, compose `full` profile, CI workflow. Steps and the safety settings are in [deploy.md](deploy.md). Hosting it is the remaining manual step.
-- **Register the real GitHub webhook** URL and secret once deployed. Deployment step, not code.
+- **GitHub webhook — automatic** since item 13; `GITHUB_WEBHOOK_SECRET` is only needed for hooks registered by hand.
 - **Metering and billing.** Pricing tiers on the landing page are not enforced anywhere. Product decision first.
 - **Unexercised with real keys:** OpenAI embeddings, Notion, live stance extraction in the current environment, SMTP against a real server.
 

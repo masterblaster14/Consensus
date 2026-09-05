@@ -131,6 +131,9 @@ class Project(Base):
     repo_full_name: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # soft delete: hidden, rejects writes
+    # Merge webhook registered on repo_full_name by app.integrations.github.ensure_webhook
+    webhook_secret: Mapped[str | None] = mapped_column(Text)
+    webhook_id: Mapped[int | None] = mapped_column(Integer)
 
 
 class Agent(Base):

@@ -28,6 +28,22 @@ class ProjectOut(ORM):
     repo_full_name: str | None = None
     created_at: datetime | None = None
     archived_at: datetime | None = None  # set = soft-deleted: hidden from lists, rejects writes
+    webhook_id: int | None = None        # GitHub hook id once the merge webhook is registered on the repo
+    webhook: "WebhookStatusOut | None" = None  # only on responses to a write that attached a repository
+
+
+class WebhookStatusOut(BaseModel):
+    """Outcome of registering the merge webhook on a project's repository."""
+
+    registered: bool
+    hook_id: int | None = None
+    url: str | None = None
+    reason: str | None = None  # when not registered: what to do about it
+
+
+class ProjectUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    repo_full_name: str | None = None  # "owner/repo"; "" detaches
 
 
 class ProjectCreate(BaseModel):

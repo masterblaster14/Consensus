@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -29,6 +30,7 @@ from app.schemas import (
     OrgUpdate,
     ProjectCreateInOrg,
     ProjectOut,
+    WebhookStatusOut,
 )
 
 router = APIRouter(prefix="/api", tags=["organisations"], route_class=CommittingRoute)
@@ -297,7 +299,16 @@ async def create_org_project(body: ProjectCreateInOrg, org: Organization = Depen
     project = Project(org_id=org.id, name=body.name.strip(), repo_full_name=(body.repo_full_name or "").strip() or None)
     db.add(project)
     await db.flush()
-    return ProjectOut.model_validate(project)
+    out = ProjectOut.model_validate(project)
+    if project.repo_full_name:
+        from app.integrations.github import ensure_webhook
+
+        await db.commit()
+        status = await ensure_webhook(project.id)
+        await db.refresh(project)
+        out = ProjectOut.model_validate(project)
+        out.webhook = WebhookStatusOut(**asdict(status))
+    return out
 
 
 # -- integrations (admin) ----------------------------------------------------------------------
@@ -312,7 +323,13 @@ async def connect_github(org: Organization = Depends(get_org_as_admin), principa
     org.github_token = user.github_access_token
     org.github_connected_by = user.id
     await db.flush()
-    return _org_out(org, "admin")
+    await db.commit()  # the integration reads the token through its own session
+    from app.integrations.github import ensure_webhooks_for_org
+
+    results = await ensure_webhooks_for_org(org.id)
+    out = _org_out(org, "admin")
+    out.integrations["github"]["webhooks"] = {pid: asdict(s) for pid, s in results.items()}
+    return out
 
 
 @router.delete("/orgs/{org_id}/integrations/github", response_model=OrgOut)
