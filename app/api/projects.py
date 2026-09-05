@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import CommittingRoute
 from app.api.deps import get_project, http_from_auth_error, optional_principal, require_principal
 from app.config import get_settings
+from app.core import claims as claims_core
 from app.core import memory as memory_core
 from app.core import verdict as verdict_core
 from app.core.auth import AuthError, Forbidden, Principal, check_write
@@ -25,6 +26,7 @@ from app.schemas import (
     EventFrame,
     ProjectCreate,
     ProjectOut,
+    StatusOut,
     TaskCreate,
     TaskOut,
     TaskUpdate,
@@ -135,6 +137,18 @@ async def list_agents(project: Project = Depends(get_project), db: AsyncSession 
     for c in claims:
         by_agent[c.agent_id].append(c)
     return [AgentOut.from_agent(a, by_agent.get(a.id)) for a in rows]
+
+
+@router.get("/projects/{project_id}/status", response_model=StatusOut)
+async def project_status(
+    project: Project = Depends(get_project),
+    agent: str | None = Query(default=None, description="one agent by name; default: every agent owned by the caller"),
+) -> StatusOut:
+    """REST mirror of the get_status MCP tool: live claims, clashes waiting on a ruling, clashes blocking others."""
+    try:
+        return await claims_core.status(agent_name=agent, project_id=project.id)
+    except (AuthError, Forbidden) as e:
+        raise http_from_auth_error(e)
 
 
 # -- tasks ---------------------------------------------------------------------------------------

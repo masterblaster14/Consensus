@@ -136,9 +136,22 @@ class AnthropicStanceExtractor:
 
         settings = get_settings()
         self.model = model or settings.stance_model
-        self._client = anthropic.AsyncAnthropic(api_key=api_key or settings.anthropic_api_key, max_retries=2, timeout=60.0)
+        self._client = anthropic.AsyncAnthropic(api_key=api_key or settings.anthropic_api_key, max_retries=2, timeout=30.0)
+        self._fallback = KeywordStanceExtractor()
+        self.fallbacks = 0
 
     async def extract(self, plan_text: str) -> Stance:
+        """One model call. If the API fails after the client's retries, fall back to the offline
+        extractor rather than failing the declaration: a degraded stance beats a blocked agent.
+        The fallback is logged and counted (`fallbacks`) so it shows up in monitoring."""
+        try:
+            return await self._extract(plan_text)
+        except Exception:
+            self.fallbacks += 1
+            log.exception("stance extraction failed (model=%s); using keyword extractor for this plan", self.model)
+            return await self._fallback.extract(plan_text)
+
+    async def _extract(self, plan_text: str) -> Stance:
         extra: dict = {}
         if self.model.startswith(("claude-opus-5", "claude-fable")):
             # Server-side refusal fallbacks exist only on the Opus 5 / Fable tier.

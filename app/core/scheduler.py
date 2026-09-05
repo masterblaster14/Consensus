@@ -1,9 +1,10 @@
 """Periodic background work, started from the app lifespan.
 
-Today: PR sync. Every PR_SYNC_INTERVAL_SECONDS each live project with a
-repository has `sync_open_prs` run so pull requests that were never declared
-still appear on the board. 0 disables the loop; it never starts when GitHub is
-disabled.
+  PR sync       every PR_SYNC_INTERVAL_SECONDS, each live project with a repository has
+                `sync_open_prs` run so pull requests that were never declared still appear
+                on the board. 0 disables; never starts when GitHub is disabled.
+  Claim expiry  hourly, open claims older than CLAIM_TTL_HOURS with no PR are retired and
+                the clashes they were blocking are released. 0 disables.
 """
 from __future__ import annotations
 
@@ -53,12 +54,31 @@ async def pr_sync_loop(interval: int) -> None:
             log.exception("pr sync pass failed")
 
 
+EXPIRY_CHECK_SECONDS = 3600
+
+
+async def claim_expiry_loop(ttl_hours: int) -> None:
+    from app.core.claims import expire_stale_claims
+
+    while True:
+        await asyncio.sleep(EXPIRY_CHECK_SECONDS)
+        try:
+            await expire_stale_claims(ttl_hours)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("claim expiry pass failed")
+
+
 def start_background_tasks() -> list[asyncio.Task[None]]:
     s = get_settings()
     tasks: list[asyncio.Task[None]] = []
     if s.enable_github and s.pr_sync_interval_seconds > 0:
         tasks.append(asyncio.create_task(pr_sync_loop(s.pr_sync_interval_seconds), name="pr-sync"))
         log.info("pr sync every %ss", s.pr_sync_interval_seconds)
+    if s.claim_ttl_hours > 0:
+        tasks.append(asyncio.create_task(claim_expiry_loop(s.claim_ttl_hours), name="claim-expiry"))
+        log.info("stale claims expire after %sh", s.claim_ttl_hours)
     return tasks
 
 

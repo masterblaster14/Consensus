@@ -17,9 +17,11 @@ Workflow for an agent:
    - proceed: go ahead.
    - proceed_with_context: read `context` (and `ruling` if present) first, then go ahead.
    - wait: another agent's open plan conflicts with yours. Call check_verdict(clash_id, wait_seconds=120)
-     until a human rules, then follow the ruling.
+     until a human rules, then follow the ruling. Do not edit code while waiting.
 3. write_memory for every discovery, decision, or dead end worth sharing.
 4. file_handoff when your change is ready for review.
+5. withdraw_claim if you abandon a declared plan, so it stops blocking other agents.
+   get_status shows your open claims and any clash waiting on you; use it when resuming work.
 """
 
 mcp_server = MCPServer(name="consensus", instructions=INSTRUCTIONS, version="0.1.0")

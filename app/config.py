@@ -4,7 +4,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     # Stance extraction (the one LLM call in the declare path)
     anthropic_api_key: str | None = None
     stance_provider: Literal["anthropic", "keyword"] = "anthropic"
-    stance_model: str = "claude-opus-5"
+    # Sonnet does this four-field extraction in about a second; Opus takes several. Declaring must feel free.
+    stance_model: str = "claude-sonnet-5"
 
     # Embeddings
     embedding_provider: Literal["openai", "hashing"] = "openai"
@@ -79,6 +80,20 @@ class Settings(BaseSettings):
 
     # -- background PR sync: seconds between sync_open_prs passes over live projects; 0 disables.
     pr_sync_interval_seconds: int = 300
+    # -- open claims with no handoff and no PR are retired after this many hours; 0 disables.
+    #    Stops abandoned plans from blocking other agents forever.
+    claim_ttl_hours: int = 72
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _asyncpg_url(cls, v: str) -> str:
+        """Hosted Postgres (Render, Railway, Heroku, Supabase) hands out postgres:// or postgresql://;
+        SQLAlchemy needs the asyncpg dialect. Accept either."""
+        if isinstance(v, str):
+            for prefix in ("postgres://", "postgresql://"):
+                if v.startswith(prefix):
+                    return "postgresql+asyncpg://" + v[len(prefix):]
+        return v
 
     @property
     def smtp_configured(self) -> bool:

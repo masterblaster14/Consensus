@@ -417,6 +417,33 @@ class FileHandoffResult(BaseModel):
     pr_number: int | None = None
 
 
+# -- claim lifecycle ----------------------------------------------------------
+
+
+class WithdrawRequest(BaseModel):
+    reason: str | None = None
+
+
+class WithdrawResult(BaseModel):
+    claim_id: uuid.UUID
+    status: str
+    released_clashes: list[uuid.UUID] = Field(default_factory=list)  # clashes closed so the other agent proceeds
+
+
+class StatusClaim(ClaimBrief):
+    agent_name: str | None = None
+
+
+class StatusOut(BaseModel):
+    """get_status: where an agent (or all of a user's agents) stands right now."""
+
+    project_id: uuid.UUID
+    agents: list[str]
+    claims: list[StatusClaim]            # open and in_review, newest first
+    waiting_on: list[ClashOut]           # my claim received `wait`; a human ruling is pending
+    blocking: list[ClashOut]             # another agent is waiting on my claim
+
+
 # -- REST requests ------------------------------------------------------------
 
 

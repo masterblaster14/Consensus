@@ -2,8 +2,10 @@
 
 The four from the spec (signatures fixed):
     declare_intent, query_memory, write_memory, file_handoff
-plus two the spec's own flow relies on:
+plus the ones the spec's own flow relies on:
     check_verdict  - poll / long-poll a clash after a `wait` verdict
+    withdraw_claim - abandon a plan so it stops blocking others
+    get_status     - my claims, clashes waiting on me, clashes I am blocking
     report_usage   - agents self-report codebase_read tokens (powers "tokens saved")
 
 Every tool accepts an optional `project_id`. When omitted, the API key's bound
@@ -20,6 +22,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
 from app.config import get_settings
+from app.core import claims as claims_core
 from app.core import handoff as handoff_core
 from app.core import memory as memory_core
 from app.core import verdict as verdict_core
@@ -185,6 +188,40 @@ def register_tools(mcp) -> None:
             assumptions=assumptions,
             uncertainties=uncertainties,
         )
+        return result.model_dump(mode="json")
+
+    @mcp.tool(
+        name="withdraw_claim",
+        description=(
+            "Abandon a declared plan. Retires your claim and immediately releases any agent that was "
+            "waiting on it. Use it when you change course or give up on the plan, so it stops blocking others."
+        ),
+    )
+    @_agent_facing
+    async def withdraw_claim(
+        claim_id: str = Field(description="claim_id returned by declare_intent"),
+        reason: str | None = Field(default=None, description="One sentence; becomes the note on any clash this releases"),
+        ctx: Context = None,  # injected by the SDK
+    ) -> dict:
+        await bind_principal(ctx)
+        result = await claims_core.withdraw_claim(uuid.UUID(claim_id), reason=reason)
+        return result.model_dump(mode="json")
+
+    @mcp.tool(
+        name="get_status",
+        description=(
+            "Where you stand: your open and in-review claims, clashes waiting on a human ruling for you, "
+            "and clashes where another agent is waiting on you. Call it when resuming work or before declaring."
+        ),
+    )
+    @_agent_facing
+    async def get_status(
+        agent_name: str | None = Field(default=None, description="Limit to one agent; default: every agent owned by your account"),
+        project_id: str | None = Field(default=None),
+        ctx: Context = None,  # injected by the SDK
+    ) -> dict:
+        await bind_principal(ctx)
+        result = await claims_core.status(agent_name=agent_name, project_id=project_id)
         return result.model_dump(mode="json")
 
     @mcp.tool(
