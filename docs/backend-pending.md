@@ -2,7 +2,7 @@
 
 The single queue of backend work. Section A came from reviewing the merged frontend (`frontend/` on the `Frontend` branch) against the REST and WebSocket contract in [backend-reference.md](backend-reference.md). Section B carries the operational gaps from [qa.md](qa.md). Section C lists frontend assumptions that need **no** backend change, only a different frontend approach.
 
-**Status on 2026-09-06:** everything in A except the team-secret decision (item 6) is built, migrated (`alembic upgrade head` → `0003_frontend_queue`) and covered by `tests/test_queue.py`. In B, email delivery, encryption at rest and background PR sync are built; metering and webhook registration remain.
+**Status on 2026-09-06:** everything in A is built (item 6 was decided: the team secret is dropped), migrated (`alembic upgrade head` → `0003_frontend_queue`) and covered by `tests/test_queue.py`. In B, email delivery, encryption at rest and background PR sync are built; metering and webhook registration remain.
 
 ## A. Needed by the frontend
 
@@ -23,13 +23,9 @@ The single queue of backend work. Section A came from reviewing the merged front
 ### 5. Org summary — done
 - `GET /api/orgs/{id}/summary` → `{projects, repositories, members, agents, active_agents, open_claims, open_clashes, memory_count, tokens_saved}`. `active_agents` = seen in the last 24 hours. Archived projects are excluded.
 
-### 6. Team-level access — decision still needed
-- **Frontend assumes:** after joining an organisation via invite link, a person also enters a **Team ID + Team Secret** to get into a team, and admins generate those credentials per team.
-- **Backend has:** organisation membership only. Every project in an org is visible to every member. No per-project secret, no per-project membership.
-- **Options:**
-  - (a) **Recommended:** drop the team secret. Joining the org via the invite link is the whole flow. Zero backend work; the frontend removes the Join Team screen and the secret display on Add Team.
-  - (b) Project-scoped invites: `POST /api/orgs/{id}/projects/{pid}/invites`, a `project_members` table, and visibility limited to project members plus org admins. Medium effort and touches every project-scoped query and the MCP key resolution.
-- **Until decided:** the frontend builds (a).
+### 6. Team-level access — decided: dropped (2026-09-06)
+- Joining the organisation through the invite link is the whole flow. A "team" is a project, and every org member sees every project, the way GitHub org members see repositories.
+- Frontend: delete the "Join Your Team" screen and the Team ID / Team Secret display on the Add Team page. "Add Team" becomes "create project" with the repository picker (`orgApi.github.repos`) and `orgApi.createProject`. No backend work.
 
 ### 7. Manual tasks — done
 - `POST /api/projects/{id}/tasks {title, external_ref?, status?}` (409 on a duplicate `external_ref`), `PATCH /api/projects/{id}/tasks/{task_id} {title?, external_ref?, status?, assignee_agent?}` (`assignee_agent` is an agent name; `""` clears), `DELETE .../tasks/{task_id}` (claims keep their history, the link is cleared). `GET .../tasks?status=` filters. `TaskOut` gained `status` (`open | in_progress | done`), `assignee_agent_id`, `assignee_agent`, `created_at`. A declared `task_ref` still auto-creates the task when it does not exist.
