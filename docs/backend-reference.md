@@ -158,6 +158,8 @@ Seeded demo: org `Consensus Demo`, admin `demo@example.com` (dev-login), members
 | `query_memory` | `question, limit?=5, agent_name?, project_id?` | `{entries[{type, content, source_agent, created_at, entry_id, similarity}], tokens_used}` |
 | `write_memory` | `agent_name, type, content, concepts?, project_id?` | `{entry_id, deduplicated}` |
 | `file_handoff` | `claim_id, changed[], untouched[], assumptions[], uncertainties[]` | `{entry_id, pr_url, pr_number}` |
+| `withdraw_claim` | `claim_id, reason?` | `{claim_id, status, released_clashes[]}` (retires the claim; open clashes it was part of are auto-resolved so the other agent proceeds; idempotent; owner or admin) |
+| `get_status` | `agent_name?, project_id?` | `{project_id, agents[], claims[], waiting_on[ClashOut], blocking[ClashOut]}` (default scope: every agent the caller owns) |
 | `report_usage` | `agent_name, tokens, kind?=codebase_read, project_id?` | `{event_id, kind, tokens}` |
 
 Agents authenticate with `Authorization: Bearer csk_…` (an API key from `POST /api/me/api-keys`). `project_id` is optional: the key's bound project is used, else the caller's only project. `developer_name` is ignored when authenticated and taken from the account. `check_verdict` and `report_usage` are additions the spec's flow relies on (the `wait` verdict tells agents to poll `check_verdict`; `codebase_read` events power the tokens-saved counter).
@@ -195,6 +197,8 @@ POST /api/projects/{id}/declare                 DeclareRequest -> DeclareResult
 GET  /api/projects/{id}/memory/query?question=  QueryMemoryResult
 POST /api/projects/{id}/memory                  WriteMemoryRequest -> WriteMemoryResult
 POST /api/claims/{claim_id}/handoff             {changed[], untouched[], assumptions[], uncertainties[]} -> FileHandoffResult
+POST /api/claims/{claim_id}/withdraw            {reason?} -> WithdrawResult   (owner of the agent or admin)
+GET  /api/projects/{id}/status?agent=           StatusOut: live claims, clashes waiting on a ruling, clashes blocking others
 POST /api/projects/{id}/integrations/github/sync    sync_open_prs
 POST /api/projects/{id}/integrations/notion/sync    sync_tasks
 ```
@@ -230,7 +234,8 @@ Every published frame is also stored in the `events` table and served by `GET /a
 
 ## Integrations
 
-- **GitHub** (`ENABLE_GITHUB`; token from the org's connected admin or `GITHUB_TOKEN`; project needs `repo_full_name`): `file_handoff` opens (or updates) a PR from `claim.branch` with the intent, changed/untouched lists, assumptions, uncertainties and clash resolutions. Resolving a clash comments on the related PR. `sync_open_prs` creates `in_review` claims for untracked PRs; it also runs in the background every `PR_SYNC_INTERVAL_SECONDS` (default 300, 0 disables) over every live project with a repository (`app/core/scheduler.py`). Webhook `pull_request.closed` retires the claim (HMAC verified with `GITHUB_WEBHOOK_SECRET`).
+- **GitHub** (`ENABLE_GITHUB`; token from the org's connected admin or `GITHUB_TOKEN`; project needs `repo_full_name`): `file_handoff` opens (or updates) a PR from `claim.branch` with the intent, changed/untouched lists, assumptions, uncertainties and clash resolutions. Resolving a clash comments on the related PR. `sync_open_prs` creates `in_review` claims for untracked PRs; it also runs in the background every `PR_SYNC_INTERVAL_SECONDS` (default 300, 0 disables) over every live project with a repository (`app/core/scheduler.py`). The same scheduler retires open claims older than `CLAIM_TTL_HOURS` (default 72, 0 disables) that never reached a PR, releasing any clash they blocked.
+- **Stance model.** `STANCE_MODEL` defaults to `claude-sonnet-5` (about a second per extraction). If the API call fails after the client's retries, the declaration continues with the offline keyword extractor and the fallback is logged, so an outage degrades accuracy rather than blocking agents. Webhook `pull_request.closed` retires the claim (HMAC verified with `GITHUB_WEBHOOK_SECRET`).
 - **Notion** (`ENABLE_NOTION`; token + tasks database id from the org settings or `NOTION_TOKEN` / `NOTION_TASKS_DB_ID`): `sync_tasks` upserts tasks from the database; `decision`, `dead_end` and `ruling` entries are mirrored as pages.
 
 Both are fire-and-forget from the declare / resolve / handoff paths; a failure is logged and never changes a verdict.

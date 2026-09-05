@@ -1,0 +1,28 @@
+{
+  "name": "consensus",
+  "owner": {
+    "name": "Consensus",
+    "url": "https://github.com/masterblaster14/Consensus"
+  },
+  "metadata": {
+    "description": "Coordination for teams whose developers each run an AI coding agent on the same repository.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "consensus",
+      "source": "./plugin",
+      "description": "Declare plans before writing code, share memory between agents, and let humans rule on conflicts once. Adds the Consensus MCP server, a hook that refuses edits until the plan is declared, and a workflow skill.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Consensus",
+        "url": "https://github.com/masterblaster14/Consensus"
+      },
+      "homepage": "https://github.com/masterblaster14/Consensus",
+      "repository": "https://github.com/masterblaster14/Consensus",
+      "license": "MIT",
+      "keywords": ["mcp", "coordination", "agents", "conflicts", "shared-memory", "code-review"],
+      "category": "productivity"
+    }
+  ]
+}

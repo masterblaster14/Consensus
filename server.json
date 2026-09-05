@@ -1,0 +1,25 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.masterblaster14/consensus",
+  "description": "Coordination for AI coding agents on a shared repository: declare plans, catch design conflicts before code exists, share memory, let humans rule once.",
+  "version": "0.1.0",
+  "websiteUrl": "https://github.com/masterblaster14/Consensus",
+  "repository": {
+    "url": "https://github.com/masterblaster14/Consensus",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://CONSENSUS_HOST/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer csk_... (a personal API key from the Consensus settings page)",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

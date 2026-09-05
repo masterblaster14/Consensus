@@ -28,5 +28,26 @@ services:
       timeout: 3s
       retries: 10
 
+  # The backend itself. Off by default so `docker compose up -d` still gives you just the
+  # databases for local development. Run everything with: docker compose --profile full up -d
+  app:
+    build: .
+    container_name: consensus-app
+    profiles: ["full"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://consensus:consensus@postgres:5432/consensus
+      REDIS_URL: redis://redis:6379
+      PORT: "8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   consensus_pgdata:

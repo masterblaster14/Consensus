@@ -44,11 +44,18 @@ The single queue of backend work. Section A came from reviewing the merged front
 ### 10. Clash resolution by the signed-in user — already worked
 - `resolved_by` may be `""` or `"human"`; the backend substitutes the caller's email.
 
+### 11. Claim lifecycle — done
+- `withdraw_claim` (MCP) / `POST /api/claims/{id}/withdraw` retires a plan and auto-resolves any clash it was part of, releasing the waiting agent with the reason as its ruling. `get_status` / `GET /api/projects/{id}/status` shows an agent's live claims and clashes. Open claims older than `CLAIM_TTL_HOURS` with no PR are expired hourly by the scheduler.
+
+### 12. Demo resilience — done
+- Stance extraction falls back to the keyword extractor when the model call fails; `STANCE_MODEL` defaults to `claude-sonnet-5` for latency; `DATABASE_URL` accepts the `postgres://` form hosted providers hand out.
+
 ## B. Operational gaps (carried from qa.md)
 
 - **Email delivery — done.** `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` / `SMTP_STARTTLS` in `.env`. Magic links and emailed invites go out through it; responses carry `sent` / `email_sent` so the UI can say "check your inbox" or "copy this link". Without `SMTP_HOST` the link is logged, and `/api/auth/providers` only offers magic links when SMTP is configured or `DEV_AUTH=true`.
 - **Encryption at rest — done.** GitHub OAuth tokens and Notion tokens are Fernet-encrypted (`app/db/crypto.py`, `TOKEN_ENCRYPTION_KEY`, comma-separate keys to rotate). Rows written before this build are read as plaintext and rewritten by `python -m scripts.encrypt_tokens`.
 - **Background PR sync — done.** `PR_SYNC_INTERVAL_SECONDS` (default 300, 0 disables) runs `sync_open_prs` over every live project with a repository from the app lifespan.
+- **Deployment — packaged.** Dockerfile, entrypoint that migrates on boot, `render.yaml` blueprint, compose `full` profile, CI workflow. Steps and the safety settings are in [deploy.md](deploy.md). Hosting it is the remaining manual step.
 - **Register the real GitHub webhook** URL and secret once deployed. Deployment step, not code.
 - **Metering and billing.** Pricing tiers on the landing page are not enforced anywhere. Product decision first.
 - **Unexercised with real keys:** OpenAI embeddings, Notion, live stance extraction in the current environment, SMTP against a real server.

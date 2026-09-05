@@ -1,0 +1,62 @@
+# Render blueprint: one web service + Postgres (pgvector) + Key Value (Redis).
+# Dashboard -> Blueprints -> New Blueprint Instance -> pick this repo.
+# Fill in the secrets it prompts for (sync: false). See docs/deploy.md.
+services:
+  - type: web
+    name: consensus
+    runtime: docker
+    plan: starter
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: consensus-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: consensus-redis
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEV_AUTH
+        value: "false"
+      - key: MCP_AUTH_REQUIRED
+        value: "true"
+      - key: STANCE_PROVIDER
+        value: anthropic
+      - key: EMBEDDING_PROVIDER
+        value: openai
+      - key: LOG_LEVEL
+        value: INFO
+      - key: SEED_DEMO
+        value: "false"
+      # Secrets and per-deployment values: prompted for at blueprint creation.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false
+
+  - type: keyvalue
+    name: consensus-redis
+    plan: free
+    ipAllowList: []          # internal only
+
+databases:
+  - name: consensus-db
+    plan: free               # free tier expires after 30 days; use basic-256mb for anything lasting
+    postgresMajorVersion: "16"

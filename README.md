@@ -31,13 +31,29 @@ Full detail: [How it works](docs/how-it-works.md).
 
 ## Connecting an agent
 
-Consensus is an MCP server. Each developer creates a personal API key and adds one line to their coding agent:
+Consensus is an MCP server. Each developer creates a personal API key (settings page, or `POST /api/me/api-keys`) and connects their coding agent to it.
 
+**Claude Code, with the guardrail** (recommended). The plugin adds the server, a skill that teaches the workflow, and a hook that refuses `Edit`/`Write` until the plan is declared and the verdict allows it:
+
+```bash
+export CONSENSUS_URL="https://<host>/mcp" CONSENSUS_API_KEY="csk_..."
+claude plugin marketplace add masterblaster14/Consensus
+claude plugin install consensus@consensus
 ```
+
+**Claude Code, server only:**
+
+```bash
 claude mcp add --transport http consensus https://<host>/mcp --header "Authorization: Bearer csk_..."
 ```
 
-Works with Claude Code, Cursor, Windsurf and any other MCP client. Everything the agent does is attributed to the developer who owns the key.
+**Cursor, Windsurf, any MCP client.** Add to the client's MCP config:
+
+```json
+{ "mcpServers": { "consensus": { "url": "https://<host>/mcp", "headers": { "Authorization": "Bearer csk_..." } } } }
+```
+
+Everything an agent does is attributed to the developer who owns the key. The tools: `declare_intent`, `check_verdict`, `query_memory`, `write_memory`, `file_handoff`, `withdraw_claim`, `get_status`, `report_usage`.
 
 ## Teams and integrations
 
@@ -57,7 +73,13 @@ docker compose up -d
 .venv/Scripts/python -m uvicorn app.main:app --port 8000
 ```
 
-Setup details, configuration and the full API: [Backend reference](docs/backend-reference.md).
+Or the whole stack in containers: `docker compose --profile full up -d --build`.
+
+Setup details, configuration and the full API: [Backend reference](docs/backend-reference.md). Hosting it: [Deploying](docs/deploy.md) (Render blueprint, Railway, Fly, or any Docker host).
+
+## License
+
+MIT. See [LICENSE](LICENSE).
 
 ## Documentation
 
