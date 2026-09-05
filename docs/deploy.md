@@ -62,7 +62,9 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 7. **Check it.** `https://<app domain>/health` should return `{"status":"ok","database":true,"redis":true}`. Open **Deploy Logs**: with `SEED_DEMO=true` the seed prints the demo organisation, project and an **admin API key**. Copy that key, then set `SEED_DEMO=false` so later boots skip the seed.
 8. **Connect an agent** with that key (step 3 of the post-deploy checklist below), and register the GitHub webhook and OAuth app against the new domain (steps 4 and 5).
 
-Railway redeploys on every push to `main`. Migrations run inside the container on each boot, so schema changes ship with the code.
+9. **Turn on auto deploy.** Service, **Settings**, **Source**: next to the connected branch click **Enable** on "Auto deploy is disabled", and switch **Wait for CI** on so Railway only deploys commits whose GitHub Actions passed. A service created from the CLI starts with auto deploy off.
+
+Railway then redeploys on every push to `main` that passes CI. Migrations run inside the container on each boot, so schema changes ship with the code.
 
 ## Option C: Fly.io or any Docker host
 
