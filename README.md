@@ -92,5 +92,6 @@ Setup, configuration, the API contract for building a dashboard, and the interna
 - [How it works](docs/how-it-works.md): the mechanism in detail
 - [Features](docs/features.md)
 - [Pricing](docs/pricing.md): proposed tiers
+- [Demo runbook](docs/demo-runbook.md): run it and show every integration working, no frontend needed
 - [Backend reference](docs/backend-reference.md): running the service, REST and WebSocket API, MCP tools
 - [Original build specification](consensus-backend-build-handoff-v9.md)

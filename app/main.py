@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api import auth, claims, clashes, devpages, keys, memory, orgs, projects, stream, webhooks
+from app.api import auth, board, claims, clashes, devpages, keys, memory, orgs, projects, stream, webhooks
 from app.config import get_settings
 from app.db.session import CommittingRoute, dispose_engine, get_engine
 from app.events.bus import get_bus
@@ -79,6 +79,7 @@ def create_app() -> FastAPI:
     app.include_router(webhooks.router)
     app.include_router(stream.router)
     app.include_router(devpages.router)
+    app.include_router(board.router)
 
     # Agent-facing MCP endpoint: POST/GET/DELETE http://host:port/mcp
     # The transport route is added directly (not mounted) so /mcp needs no trailing-slash redirect.
