@@ -1,102 +1,104 @@
-# Running the backend and demonstrating it
+# Demo runbook
 
-This is the operator's guide: how to bring Consensus up on a laptop and show every integration working, with no frontend required. Everything below uses the built-in pages the backend serves and the scripts in `scripts/`.
+The operator's guide for the hosted product: what to prepare, how to rehearse, what
+to show for the MCP server and the marketplace listings, and how to recover. The
+presenter's script is `demo-script.md`.
 
-## 1. Start it
+Hosted instance: https://consensus-production-aed6.up.railway.app. It runs the
+backend, the web app, the API, the WebSocket and the MCP endpoint from one origin.
+Sign-in is GitHub. Stance extraction uses the real Anthropic model.
 
-From the `consensus` folder, in one terminal:
+## 1. The day before: rehearse the whole thing once
 
-```bash
-docker compose up -d
-.venv\Scripts\python -m alembic upgrade head
-set DEMO_REPO_FULL_NAME=masterblaster14/test_repo
-.venv\Scripts\python -m scripts.seed_demo --reset
-.venv\Scripts\python -m uvicorn app.main:app --port 8000
+Do the script end to end with the teammate who will be on laptop 2. Use a repository
+one of you administers (webhook registration needs admin rights on it) and that both
+of you can push to. Name the organisation something like "Rehearsal".
+
+What the rehearsal buys you:
+
+- Both GitHub accounts authorise the OAuth app once. On stage GitHub redirects back
+  with no consent screen.
+- The rehearsal organisation stays as the fallback. If anything is slow on stage,
+  switch to it from the sidebar switcher; it already has the team, the members, the
+  keys, memory and a merged pull request.
+- Each of you has `consensus` in Claude Code already. On stage, creating a new key and
+  re-running `claude mcp add` replaces the header; that is the whole reconnect.
+
+Check that the pull request step works in rehearsal: the agent must push its branch
+to the attached repository before `file_handoff`, and the merge must retire the plan
+on the dashboard within a few seconds. If merging does not retire it, the webhook was
+not registered: open the team's Integrations page and click register.
+
+## 2. On the day, before the audience arrives
+
+1. Open https://consensus-production-aed6.up.railway.app/health on the projector
+   laptop. You want `"status":"ok"` with database and redis both true.
+2. Both laptops: signed out of the site, Claude Code open in the repository folder,
+   a terminal beside the browser. The dashboard updates within a second of every
+   command, and that is the demo, so keep them side by side.
+3. Have the three prompts from the script in a text file to paste.
+4. Have the rehearsal pull request open in a background tab.
+5. Decide the organisation name for the stage run. It must differ from the rehearsal
+   one because slugs are unique.
+
+## 3. Showing the MCP server itself
+
+Three things prove the integration is real rather than a page that looks like one:
+
+- **`/mcp` inside Claude Code** lists `consensus` as connected with eight tools:
+  `declare_intent`, `check_verdict`, `query_memory`, `write_memory`, `file_handoff`,
+  `withdraw_claim`, `get_status`, `report_usage`.
+- **The endpoint is public and authenticated.** `POST /mcp` without a key returns
+  401. With a key, Claude Code's tool calls are what you see moving on the dashboard.
+- **The API page.** https://consensus-production-aed6.up.railway.app/docs is the
+  interactive OpenAPI page; every endpoint the dashboard uses is there and can be
+  called with a key as the bearer token (click Authorize).
+
+## 4. Showing the marketplace listings
+
+**MCP Registry.** The server is published as `io.github.masterblaster14/consensus`.
+The listing, with the hosted URL and the header it needs, is at:
+
+```
+https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.masterblaster14/consensus
 ```
 
-On macOS or Linux use `.venv/bin/python` and `export` instead of `set`. First-time setup (once): `python -m venv .venv`, then `.venv\Scripts\pip install -r requirements.txt`, then `copy .env.example .env` and fill in `ANTHROPIC_API_KEY`, `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`.
+Any client that reads the registry can find it by name.
 
-The seed prints two things you need: the demo project id and the admin API key (`csk_demo_…`). Copy the key.
+**Claude Code plugin marketplace.** The repository is itself a marketplace, and the
+plugin bundles the MCP server, the guardrail hook and the workflow skill:
 
-Check it is up: open http://localhost:8000/health and you should see `"status":"ok"` with database and redis both true.
-
-## 2. Open the board
-
-http://localhost:8000/board?token=csk_demo_…&project=00000000-0000-4000-8000-00000000c0de
-
-Paste the seeded key in place of `csk_demo_…`. The header shows a green "live" dot when the WebSocket is connected. Leave this window visible for the whole demo; everything else happens in a second terminal and shows up here within a second.
-
-The board is a placeholder for the real dashboard, but it uses only the public REST and WebSocket API, so what it shows is exactly what the frontend will get.
-
-## 3. The core demo (two minutes)
-
-In a second terminal:
-
-```bash
-.venv\Scripts\python -m scripts.smoke_e2e --project 00000000-0000-4000-8000-00000000c0de
+```
+set CONSENSUS_API_KEY=csk_...
+claude plugin marketplace add masterblaster14/Consensus
+claude plugin install consensus@consensus
 ```
 
-Watch the board while it runs. In order:
+After a restart `/plugin` shows it installed and `/mcp` shows the server. Install it
+on laptop 2 before the demo if you want step 8 of the script, where the hook refuses
+an edit until the plan is declared.
 
-1. **Agent A declares** a plan to move sessions to signed refresh tokens. The verdict is *proceed*. An open plan appears with its concepts extracted by Claude (session model, refresh token, auth subsystem).
-2. **Agent A writes memory**, two discoveries about how login works. A third near-duplicate is linked, not stored. Both show in Shared memory.
-3. **Agent B queries memory** with "how does login work" and gets the entries. The tokens-saved counter moves.
-4. **Agent B declares** a login endpoint that creates a server-side session. The verdict is *wait*. A hard clash appears: two agents, two plans in different files, opposite positions on where sessions live. Point at the two positions on the clash card: "sessions are stateless signed tokens" against "sessions stored server-side".
-5. **An unrelated plan** (CSV export) is declared and is not blocked.
-6. **A human resolves** the clash: Agent A proceeds, with a note. The script does this through the API; you can do it yourself instead by clicking a button on the clash card. The waiting agent is released within milliseconds and receives the ruling. A `ruling` entry appears in memory.
-7. **Agent B declares the same plan again.** Verdict is *proceed with context*, the ruling is attached, and no new open clash is created. This is the moment to make: the human was asked once, and never again.
-8. **Agent B files a handoff.** It appears in memory and the plan moves to in review.
+## 5. Recovering
 
-The terminal prints a check for each step. Because the demo project accumulates plans and rulings across runs, run the seed with `--reset` between demos, or leave out `--project` and the script will create a fresh project for itself.
-
-## 4. Show the stance extraction on its own
-
-```bash
-.venv\Scripts\python -m scripts.try_stance
-```
-
-Five plan pairs go through the real model and the deterministic comparison, and the output shows the extracted stance for each plan, the shared concepts, the divergent axis, and the severity. Use the third pair to make the point that a 404-versus-200 disagreement across two unrelated files is caught with no file paths involved, and the fifth to show that the same position in different words is not a clash.
-
-## 5. Show GitHub end to end
-
-Prerequisite: sign in with GitHub once and put the session token in `.env` as `DEV_SESSION_TOKEN`. To sign in, open http://localhost:8000/api/auth/github/start, visit the `url` it returns, authorise, and copy the token from the page you land on.
-
-```bash
-.venv\Scripts\python -m scripts.github_e2e --keep
-```
-
-It connects your GitHub account to the demo organisation, creates two branches on `masterblaster14/test_repo`, runs the clash and the ruling, and files a handoff that opens a real pull request. Open the printed PR link and show the description: the original intent, changed and untouched lists, assumptions, uncertainties, and the clash ruling with the note. The script then simulates the merge webhook and the plan is retired from the board. Without `--keep` it closes the PR and deletes the branches at the end.
-
-## 6. Show the API surface
-
-- http://localhost:8000/docs is the interactive OpenAPI page. Every endpoint the dashboard will use is there and can be called from the page with the API key as a bearer token (click Authorize).
-- The MCP endpoint agents talk to is http://localhost:8000/mcp. To show a real agent connected, add it to Claude Code:
-
-  ```bash
-  claude mcp add --transport http consensus http://localhost:8000/mcp --header "Authorization: Bearer csk_demo_…"
-  ```
-
-  then in Claude Code ask it to "declare that you plan to add a logout endpoint that deletes the server-side session" and watch the board.
-
-## 7. Sign-in and organisations without a frontend
-
-- http://localhost:8000/api/auth/providers shows which sign-in methods are configured.
-- Magic link: `POST /api/auth/magic-link` with `{"email": "..."}` returns the link directly while `DEV_AUTH=true`; open it and the page signs you in.
-- Invites: create one from `/docs` under organisations, open the returned URL, paste a session token, and click Accept.
-
-## What is and is not connected
-
-| Verified working | Notes |
+| Problem | Do this |
 |---|---|
-| Verdict loop, memory, rulings, arbitration | Automated tests plus live runs |
-| Claude Opus stance extraction | Real model; five plan pairs correct |
-| Sign-in, organisations, invites, roles, API keys | Automated tests |
-| GitHub: OAuth, org connect, PR from handoff, merge webhook | Verified on the test repository |
-| Live board over WebSocket | The `/board` page |
+| GitHub sign-in hangs | Retry once; then use the rehearsal organisation, already signed in on the other laptop |
+| Verdict is `proceed` where the script expects `wait` | A ruling from an earlier run in the same organisation applies; that is correct behaviour. Use a fresh organisation, or change one plan's position |
+| Agent B does not wake after the ruling | Its `check_verdict` timed out; ask it to call `check_verdict` again with the clash id |
+| Pull request did not open | The branch was not pushed to the attached repository. Push it and ask the agent to file the handoff again, or show the rehearsal pull request |
+| Merge did not retire the plan | The webhook was not registered: Team, Integrations, register it. Retire the already-merged plan with Withdraw on its page; the next merge retires on its own |
+| Dashboard shows the footer dot grey | The WebSocket dropped; it reconnects on its own, and a page reload reloads everything from the API |
 
-| Not yet exercised | Why |
-|---|---|
-| OpenAI embeddings | No key configured; the offline hashing provider is in use |
-| Notion | No integration token configured |
-| Real merge webhook from GitHub | GitHub cannot reach localhost; simulated locally. Register the webhook URL and `GITHUB_WEBHOOK_SECRET` once deployed |
-| Email delivery for magic links | No provider wired; links are returned in dev mode |
+## 6. Resetting
+
+There is no delete for organisations. Between runs, create a new organisation with a
+new name; old ones stay in the switcher and cost nothing. Archive a team from
+**Manage teams** if you want it out of the way.
+
+## 7. Running it locally instead
+
+Everything above also runs on a laptop with Docker: see `getting-started.md`. The
+web app is served at http://localhost:8000 once `frontend/dist` is built, the sign-in
+page offers a development sign-in when `DEV_AUTH=true`, and GitHub cannot reach a
+laptop for the merge webhook, so the local scripts simulate it. The hosted instance
+is the one to demo.

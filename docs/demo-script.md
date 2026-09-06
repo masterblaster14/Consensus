@@ -1,139 +1,180 @@
 # Demo script
 
-A presenter's script for a ten-minute demo with the backend and your frontend running separately. Each step says what to do, what the audience sees, and the one sentence to say. If your frontend does not yet show something, the fallback is the backend's built-in page at `/board` or the API page at `/docs`; both use the same API your frontend does.
+A presenter's script for a ten-minute demo on the hosted product at
+https://consensus-production-aed6.up.railway.app with two laptops. Nothing is
+pre-made: the organisation, the team, the members, the keys and the agents are all
+created in front of the audience. Each step says what to do, what the audience sees,
+and the one sentence to say.
 
-## Before the audience arrives
-
-Backend, terminal 1 (leave running):
-
-```
-docker compose up -d
-.venv\Scripts\python -m alembic upgrade head
-set DEMO_REPO_FULL_NAME=masterblaster14/test_repo
-.venv\Scripts\python -m scripts.seed_demo --reset
-.venv\Scripts\python -m uvicorn app.main:app --port 8000
-```
-
-Frontend, terminal 2: start it, pointed at `http://localhost:8000`. Make sure `CORS_ORIGINS` in the backend `.env` includes the frontend's origin.
-
-Then:
-
-1. Sign in on the frontend. Use GitHub if the OAuth app is configured, otherwise the dev login with `demo@example.com`. You should land in the organisation "Consensus Demo" with the project "Consensus Demo" already there, three agents (Priya, Marcus, Lena), two tasks, six memory entries, and counters that are not zero.
-2. Create an API key from your profile page, or use the seeded one the seed script printed. Have it in a text file ready to paste.
-3. Open a third terminal in the `consensus` folder for the agent commands. Test one command end to end before people arrive.
-4. Open the pull request from the earlier GitHub run in a background tab, or plan to create one live in step 7.
-5. Keep the browser and the terminal side by side. The board updates within a second of each command, and that is the demo.
-
-If anything is stale, `seed_demo --reset` wipes and rebuilds the demo project in a few seconds.
+Roles: **Presenter** (laptop 1, projected) and **Teammate** (laptop 2, own GitHub
+account, own Claude Code). Both have done the rehearsal in `demo-runbook.md`.
 
 ## The story in one line
 
-"Every developer here runs an AI coding agent. The agents do not know about each other. Consensus is the layer where they check in before they write code, so conflicts are caught before the code exists and nothing learned is learned twice."
+"Every developer here runs an AI coding agent. The agents do not know about each
+other. Consensus is the layer where they check in before they write code, so
+conflicts are caught before the code exists and nothing learned is learned twice."
 
 ## Steps
 
-### 1. The empty board (30 seconds)
+### 1. Create the organisation (1 minute)
 
-Show the project board: open plans, clashes, shared memory, counters.
+Presenter opens the site, clicks **Sign in with GitHub**, lands on onboarding, picks
+**Create an organisation**, names it. Then **Create team**, names the team, and picks
+the repository from the list. (The list is there because GitHub was connected during
+rehearsal; if it is not, type `owner/repository`.)
 
-Say: "One board per repository. The whole team sees the same thing. Six things the team already knows are in memory: how auth works, a decision about error responses, a dead end someone hit."
+Say: "One organisation per company, one team per repository. Attaching the
+repository also registered the merge webhook on it. That is the last piece of setup."
 
-### 2. Connect an agent (1 minute)
+### 2. Invite the teammate (30 seconds)
 
-In the terminal, add Consensus to Claude Code with the API key:
+Presenter: sidebar **Manage members**, **Invite member**, copy the link. Send it to the
+Teammate in whatever chat you have open. Teammate opens it on laptop 2, signs in with
+GitHub, clicks accept, and is in the same team.
+
+Say: "A link. No secrets, no IDs. Everyone in the organisation sees every team."
+
+### 3. Connect the agents (1 minute)
+
+Both: sidebar **Settings**, **Create key**, name it, and the page shows the key once
+together with the exact command. Paste the command into a terminal:
 
 ```
-claude mcp add --transport http consensus http://localhost:8000/mcp --header "Authorization: Bearer csk_..."
+claude mcp add --transport http consensus https://consensus-production-aed6.up.railway.app/mcp --header "Authorization: Bearer csk_..."
 ```
 
-Say: "Each developer mints a key and gives it to their agent. One URL, one header. From now on the agent talks to Consensus on its own. Everything it does is attributed to me; it cannot pretend to be someone else."
+Presenter, in Claude Code, types `/mcp`. The audience sees `consensus` connected
+with its eight tools.
 
-If you would rather not use Claude Code live, every remaining step can be driven by the smoke script instead; see the fallback at the end.
+Say: "One URL, one header. Everything this agent does is attributed to me; it cannot
+pretend to be someone else. It is on the MCP Registry and the Claude Code plugin
+marketplace, so a new developer is two commands away."
 
-### 3. The agent asks before it reads (1 minute)
+### 4. The first agent declares and writes memory (1.5 minutes)
 
-In Claude Code, type: "Before you do anything, ask Consensus what the team knows about how login works."
+Presenter, in Claude Code, in the repository:
 
-The agent calls `query_memory`. On the board, the tokens-saved counter moves and the live event feed shows the read.
+> Before you do anything, ask Consensus what the team knows about how login works.
 
-Say: "The agent read five sentences instead of the whole auth module. Consensus counts what that saved."
+The agent calls `query_memory`. The answer is empty because the organisation is a
+minute old. Then:
 
-### 4. Agent A declares (1 minute)
+> Declare this plan to Consensus as Agent A on branch demo/refresh-tokens: replace
+> the session model with a refresh-token flow, moving sessions from the server-side
+> store to signed tokens. Then write two memory entries: a discovery that login
+> currently stores sessions server-side keyed by a cookie, and a decision that
+> sessions are moving to signed refresh tokens.
 
-In Claude Code: "Declare this plan to Consensus: replace the session model with a refresh-token flow, moving sessions from the server-side store to signed tokens. Use agent name Agent A."
+On the dashboard: Agent A appears, the plan appears with the verdict **proceed** and
+the stance extracted from it (session model, authentication position), and Memory
+gains two entries. Click the plan to show the extracted positions.
 
-The board shows a new open plan with its concepts (session model, refresh token, auth subsystem) and the verdict: proceed.
+Say: "Before writing code the agent states its intent in plain language. One model
+call extracts what it touches and the positions it takes. Nothing overlaps, so it
+proceeds. And what it learned is now team memory."
 
-Say: "Before writing code, the agent states its intent in plain language. One model call extracts what it touches and the positions it takes. Nothing overlaps, so it proceeds."
+### 5. The second agent collides (2 minutes)
 
-### 5. Agent B collides (2 minutes)
+Teammate, in their Claude Code:
 
-This is the centre of the demo. In a second Claude Code session, or the same one with a different agent name: "Declare this plan as Agent B: add a POST /login endpoint that creates a server-side session and returns the session id."
+> Ask Consensus what the team knows about login, then declare this plan as Agent B on
+> branch demo/login-endpoint: add a POST /login endpoint that creates a server-side
+> session and returns the session id.
 
-The verdict is wait. A hard clash appears on the board with both plans side by side and the two positions: "sessions are stateless signed tokens" against "sessions stored server-side".
+Two things to point at. First, the query hit: Agent B got Agent A's discovery and the
+tokens-saved counter moved. Second, the verdict is **wait**. On the projected
+dashboard a conflict appears within a second, with both plans side by side and the two
+positions: signed tokens against server-side sessions. Agent B's status is
+**blocked**; Agent B's Claude Code is sitting in `check_verdict`.
 
-Say: "Different files. Different directories. Git would merge these without a word. Consensus caught it because it compares what the plans mean, not which files they touch. Agent B is now waiting."
+Say: "Different files. Different directories. Git would merge these without a word.
+Consensus caught it because it compares what the plans mean, not which files they
+touch. Agent B is now waiting on a human."
 
-Pause here. Let people read the clash card.
+Pause here and let people read the conflict card.
 
-### 6. A human rules, and the ruling compounds (2 minutes)
+### 6. A human rules once (1.5 minutes)
 
-On the board, click the resolve button on the clash: Agent A proceeds. Type a note such as "Refresh tokens win. Login must issue a signed token, not a server-side session."
+Presenter: **Conflicts**, open the card, choose Agent A proceeds, type a note such as
+"Refresh tokens win. Login must issue a signed token, not a server-side session."
+Submit.
 
-Three things happen at once: the clash is resolved, Agent B's waiting call returns with the ruling, and a ruling entry appears in shared memory.
+Three things happen at once: the conflict is resolved on the dashboard, the
+Teammate's waiting call returns with the ruling in the terminal, and a ruling entry
+appears in Memory.
 
-Now declare Agent B's plan a second time, word for word. The verdict is proceed with context, the ruling is attached, and no new clash is opened.
+Teammate then declares the same plan a second time, word for word. The verdict is
+**proceed with context**, the ruling is attached, and no new conflict opens.
 
-Say: "That is the difference between a nag and a system. I was asked once. Every agent from now on gets my answer without asking me."
+Say: "That is the difference between a nag and a system. I was asked once. Every
+agent from now on gets my answer without asking me."
 
-### 7. Handoff opens the pull request (1 minute)
+### 7. Handoff opens the pull request (1.5 minutes)
 
-In Claude Code as Agent A: "File a handoff to Consensus for that plan: changed the session module and auth middleware, left the login endpoint and user model untouched, assumed the refresh token lives in an HttpOnly cookie, unsure about the rotation interval." The plan needs a branch that exists on the repo; if you did not set one when declaring, show the pull request from the earlier GitHub run instead.
+Presenter, in Claude Code:
 
-The plan moves to in review and a pull request opens on GitHub. Open it. The description has the intent, what changed, what was left alone, the assumptions, the uncertainties, and the ruling with your note.
+> Make the change on branch demo/refresh-tokens, commit and push it, then file a
+> handoff to Consensus: changed the session module and auth middleware, left the login
+> endpoint and user model untouched, assumed the refresh token lives in an HttpOnly
+> cookie, unsure about the rotation interval.
 
-Say: "The review starts with everything the reviewer needs, including the decision that was made along the way. When it merges, the plan leaves the board on its own."
+The plan moves to **in review** and a pull request opens on the repository. Open it.
+The description has the intent, what changed, what was left alone, the assumptions,
+the uncertainties, and your ruling with the note. Merge it. Within a few seconds the
+plan leaves the board and Agent A is idle.
 
-### 8. Close (30 seconds)
+Say: "The review starts with everything the reviewer needs, including the decision
+that was made along the way. When it merges, the plan retires on its own."
 
-Back to the board: counters up, one clash caught, memory grown by the discoveries, the ruling and the handoff.
+### 8. The guardrail (optional, 1 minute)
 
-Say: "It never read or wrote code. It read plans, kept memory, asked a human once, and opened a pull request. That is the whole surface."
+If time allows, on laptop 2 with the plugin installed instead of the bare server, ask
+Claude Code to edit a file without declaring. The hook refuses with "declare your plan
+before editing code". Then declare, and the edit goes through.
+
+Say: "With the plugin, the agent cannot skip the check-in even if it wants to."
+
+### 9. Close (30 seconds)
+
+**Teams** page: counters up, one conflict caught, memory grown by two discoveries, a
+ruling and a handoff, one pull request merged.
+
+Say: "It never read or wrote code. It read plans, kept memory, asked a human once, and
+opened a pull request. That is the whole surface."
 
 ## Questions you will get
 
-**What if the agent ignores the verdict?** It can, but the plan and verdict are on the board and in the log, so an ignored wait is visible to the team, not silent.
+**What if the agent ignores the verdict?** With the plugin it cannot edit until the
+verdict allows it. Without the plugin it can, but the plan and verdict are on the
+dashboard and in the log, so an ignored wait is visible to the team, not silent.
 
-**How do you avoid false alarms?** One model call extracts positions; an axis the plan does not mention is left empty, never guessed. The comparison itself is deterministic string and vector arithmetic with every input logged, so any clash can be explained.
+**How do you avoid false alarms?** One model call extracts positions; an axis the plan
+does not mention is left empty, never guessed. The comparison itself is deterministic
+with every input logged, so any conflict can be explained from its verdict log, which
+is on the plan's page.
 
-**Does it see our code?** No. Plans, not files. It cannot execute, edit, or merge anything.
+**Does it see our code?** No. Plans, not files. It cannot execute, edit, or merge
+anything; the pull request is opened from a branch the agent pushed itself.
 
 **Which agents?** Anything that speaks MCP over HTTP: Claude Code, Cursor, Windsurf.
 
-## Fallback: drive it from the script instead of Claude Code
+**Where is it hosted?** Railway, with Postgres and Redis. The backend serves the web
+app, the REST API, the WebSocket and the MCP endpoint from one origin.
 
-If you would rather not type into Claude Code on stage, this runs steps 3 to 7 automatically while the board updates:
+## Fallbacks
 
-```
-.venv\Scripts\python -m scripts.smoke_e2e --project 00000000-0000-4000-8000-00000000c0de
-```
+- **GitHub or the venue network is slow.** Switch to the rehearsal organisation from
+  the sidebar switcher. It already has the team, the members, the keys and memory.
+- **You would rather not type into Claude Code live.** From the repository folder,
+  with the key in `CONSENSUS_API_KEY`, this drives steps 4 to 7 against the hosted
+  instance while the dashboard updates:
 
-To do the GitHub pull request live (needs your GitHub session token in `.env` as `DEV_SESSION_TOKEN`):
+  ```
+  set CONSENSUS_URL=https://consensus-production-aed6.up.railway.app
+  set CONSENSUS_API_KEY=csk_...
+  .venv\Scripts\python -m scripts.smoke_e2e
+  ```
 
-```
-.venv\Scripts\python -m scripts.github_e2e --keep
-```
-
-And if you want to show the model's extraction on its own, with five plan pairs and the reason each is or is not a clash:
-
-```
-.venv\Scripts\python -m scripts.try_stance
-```
-
-## Reset between demos
-
-```
-.venv\Scripts\python -m scripts.seed_demo --reset
-```
-
-Without this, the ruling from the previous run makes Agent B skip the wait in step 5. That is correct behaviour, but it spoils the reveal.
+- **The pull request does not open.** It needs a pushed branch on the attached
+  repository. Show the pull request from the rehearsal instead.
