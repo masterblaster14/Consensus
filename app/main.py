@@ -148,7 +148,9 @@ def create_app() -> FastAPI:
             candidate = (frontend / path).resolve() if path else index
             if path and candidate.is_file() and str(candidate).startswith(str(frontend.resolve())):
                 return FileResponse(candidate)
-            return FileResponse(index)
+            # The shell must never be cached: it names hashed assets that change on every deploy,
+            # and a stale copy would point browsers at files that no longer exist.
+            return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
         log.info("serving frontend from %s", frontend)
     return app

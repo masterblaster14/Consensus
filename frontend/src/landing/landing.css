@@ -958,7 +958,7 @@
     var(--bg-2);
 }
 
-.panel {
+.page-root .panel {
   width: 100%;
   max-width: 468px;
   background: var(--surface);
@@ -968,27 +968,27 @@
   box-shadow: var(--shadow);
 }
 
-.panel--wide {
+.page-root .panel--wide {
   max-width: 560px;
 }
 
-.panel__head {
+.page-root .panel__head {
   margin-bottom: 24px;
 }
 
-.panel__head h1 {
+.page-root .panel__head h1 {
   font-size: 1.5rem;
   letter-spacing: -0.03em;
   margin-bottom: 8px;
   color: var(--text);
 }
 
-.panel__head p {
+.page-root .panel__head p {
   color: var(--text-3);
   font-size: 0.9375rem;
 }
 
-.panel__foot {
+.page-root .panel__foot {
   margin-top: 22px;
   padding-top: 20px;
   border-top: 1px solid var(--border-soft);
@@ -1001,13 +1001,13 @@
   flex-wrap: wrap;
 }
 
-.panel__foot a,
+.page-root .panel__foot a,
 .link {
   color: var(--accent-text);
   font-weight: 600;
 }
 
-.panel__foot a:hover,
+.page-root .panel__foot a:hover,
 .link:hover {
   text-decoration: underline;
 }
@@ -1153,19 +1153,19 @@
   color: var(--accent-text);
 }
 
-.copy-row {
+.page-root .copy-row {
   display: flex;
   gap: 8px;
   align-items: center;
 }
 
-.copy-row .input {
+.page-root .copy-row .input {
   flex: 1;
   min-width: 0;
   background: var(--bg-2);
 }
 
-.copy-btn {
+.page-root .copy-btn {
   height: 46px;
   padding: 0 14px;
   border-radius: var(--radius);
@@ -1180,12 +1180,12 @@
   flex: none;
 }
 
-.copy-btn:hover {
+.page-root .copy-btn:hover {
   border-color: var(--accent-line);
   color: var(--text);
 }
 
-.copy-btn.is-done {
+.page-root .copy-btn.is-done {
   color: var(--success);
   border-color: var(--success);
   background: var(--success-soft);
@@ -1340,7 +1340,7 @@
     grid-template-columns: 1fr;
   }
 
-  .panel {
+  .page-root .panel {
     padding: 26px 20px;
   }
 }
