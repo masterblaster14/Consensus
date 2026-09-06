@@ -18,7 +18,7 @@ Markdown pages intended for the landing site. Each file is self-contained and ca
 
 The original build spec the backend was written from is [backend-handoff-spec.md](backend-handoff-spec.md). The Claude Code plugin (MCP server, edit guardrail, workflow skill) lives in [../plugin](../plugin/README.md).
 
-The top-level [README](../README.md) describes the product; the developer-facing reference is [backend-reference.md](backend-reference.md). The web app lives in [frontend/](../frontend/README.md); its README lists what is built and what is left.
+The top-level [README](../README.md) describes the product; the developer-facing reference is [backend-reference.md](backend-reference.md). The web app lives in [frontend/](../frontend/README.md) and is served by the backend from the same origin; its README maps every screen to the endpoints it uses.
 
 Notes for whoever builds the pages:
 

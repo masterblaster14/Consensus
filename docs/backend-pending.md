@@ -1,6 +1,6 @@
 # Backend: pending changes
 
-The single queue of backend work. Section A came from reviewing the merged frontend (`frontend/` on the `Frontend` branch) against the REST and WebSocket contract in [backend-reference.md](backend-reference.md). Section B carries the operational gaps from [qa.md](qa.md). Section C lists frontend assumptions that need **no** backend change, only a different frontend approach.
+The single queue of backend work. Section A came from reviewing the frontend (now `frontend/` on main) against the REST and WebSocket contract in [backend-reference.md](backend-reference.md). Section B carries the operational gaps from [qa.md](qa.md). Section C lists frontend assumptions that need **no** backend change, only a different frontend approach.
 
 **Status on 2026-09-06:** everything in A is built (item 6 was decided: the team secret is dropped), migrated (`alembic upgrade head` → `0003_frontend_queue`) and covered by `tests/test_queue.py`. In B, email delivery, encryption at rest and background PR sync are built; metering and webhook registration remain.
 
@@ -51,6 +51,10 @@ The single queue of backend work. Section A came from reviewing the merged front
 
 ### 14. Frontend served from the backend — done
 - A `frontend/dist` build is served from `/` with SPA fallback; the Dockerfile builds it when present. Deploying the `Frontend` branch (or merging it) puts the app on the hosted domain with no extra service.
+
+### 15. Frontend integration — done (2026-09-06)
+- `frontend/` on main is the real product: every screen runs on the REST API and WebSocket, no mock data. Sign-in (GitHub, magic link, dev login), the `/auth/callback`, `/auth/magic` and `/invite/:token` routes, onboarding, teams, members, keys, integrations, claims, tasks, conflicts with arbitration, memory with semantic search and manual entries, live activity. Verified locally end to end with three agents over MCP. The `Frontend` and `frontend_pari` branches and the `CONSENSUS COMBINED_FINAL` folder are superseded by `frontend/` on main.
+- Rollback: tag `backend-stable` is the last commit before the frontend landed; `git checkout backend-stable -- .` or deleting `frontend/` returns the backend to API-only behaviour with no other change.
 
 ## B. Operational gaps (carried from qa.md)
 
