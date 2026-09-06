@@ -2122,3 +2122,12 @@
     margin-bottom: 10px;
   }
 }
+
+/* The brand is a link back to the site; keep it looking like the wordmark. */
+.app-shell a.sidebar__brand {
+  color: inherit;
+  text-decoration: none;
+}
+.app-shell a.sidebar__brand:hover {
+  opacity: 0.85;
+}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
+  orgApi,
   projectApi,
   type Agent,
   type ApiKey,
@@ -12,6 +13,7 @@ import {
   type Invite,
   type MemoryEntry,
   type MemoryType,
+  type OrgSummary,
   type Project,
   type Resolution,
   type Task,
@@ -295,9 +297,6 @@ function NoTeamsShell() {
                           Create a team
                         </Link>
                       )}
-                      <Link to="/" className="dash-ghost-button">
-                        Back to site
-                      </Link>
                     </div>
                     <p style={{ marginTop: 22, fontSize: '0.75rem' }}>Signed in as {user?.email}</p>
                   </div>
@@ -405,10 +404,10 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 
   return (
     <aside className={`sidebar${open ? ' is-open' : ''}`}>
-      <div className="sidebar__brand">
+      <Link to="/" className="sidebar__brand" title="Back to the site">
         <Icon.Logo size={24} />
         Consensus
-      </div>
+      </Link>
 
       <div className="workspace">
         <button type="button" className="workspace__trigger" aria-expanded={switcherOpen} onClick={() => setSwitcherOpen((v) => !v)}>
@@ -565,10 +564,6 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
               <b>{user?.name}</b>
               <span>{user?.email}</span>
             </div>
-            <Link to="/" className="usermenu__item" onClick={() => setUserMenuOpen(false)}>
-              <Icon.Home size={15} />
-              Back to site
-            </Link>
             <Link to={withTeam('/app/settings')} className="usermenu__item" onClick={() => setUserMenuOpen(false)}>
               <Icon.Settings size={15} />
               Settings
@@ -797,7 +792,7 @@ function AgentRow({ agent }: { agent: Agent }) {
 
 function OverviewPage() {
   const { team, agents, claims, clashes, memory, activity, counters, loading, agentStatus } = useProject()
-  const { user, isAdmin } = useSession()
+  const { user } = useSession()
   const [filter, setFilter] = useState<'all' | UiAgentStatus>('all')
   const [query, setQuery] = useState('')
 
@@ -828,18 +823,10 @@ function OverviewPage() {
             Welcome back, {firstName(user?.name ?? '')} · {team.repo ?? 'no repository'} · {activeAgents} agent{activeAgents === 1 ? '' : 's'} at work
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {isAdmin && (
-            <Link to="/app/members" className="dash-ghost-button">
-              <Icon.Users size={15} />
-              Manage members
-            </Link>
-          )}
-          <Link to={`/app/conflicts?team=${team.id}`} className="dash-primary-button">
-            <Icon.Scale size={15} />
-            Arbitrate conflicts
-          </Link>
-        </div>
+        <Link to={`/app/conflicts?team=${team.id}`} className="dash-primary-button">
+          <Icon.Scale size={15} />
+          Arbitrate conflicts
+        </Link>
       </div>
 
       <div className="dash-stat-grid">
@@ -2512,6 +2499,12 @@ function TeamsPage() {
   const { isAdmin, org, teams, people } = useSession()
   const navigate = useNavigate()
   const [stats, setStats] = useState<Record<string, Counters>>({})
+  const [summary, setSummary] = useState<OrgSummary | null>(null)
+
+  useEffect(() => {
+    if (!org) return
+    orgApi.summary(org.id).then(setSummary).catch(() => setSummary(null))
+  }, [org, teams.length])
 
   useEffect(() => {
     let cancelled = false
@@ -2548,6 +2541,26 @@ function TeamsPage() {
           </div>
         )}
       </div>
+
+      {summary && (
+        <div className="dash-stat-grid" style={{ marginBottom: 22 }}>
+          {[
+            { label: 'Teams', value: summary.projects, note: `${summary.repositories} with a repository` },
+            { label: 'Members', value: summary.members, note: 'organisation-wide' },
+            { label: 'Agents', value: summary.agents, note: `${summary.active_agents} active in the last day` },
+            { label: 'Open conflicts', value: summary.open_clashes, note: `${summary.open_claims} open claims` },
+            { label: 'Memory entries', value: summary.memory_count, note: `${summary.tokens_saved.toLocaleString()} tokens saved` },
+          ].map((tile) => (
+            <div className="dash-stat-card" key={tile.label}>
+              <div className="dash-stat-card__top">
+                <span className="dash-stat-card__label">{tile.label}</span>
+              </div>
+              <div className="dash-stat-card__value">{tile.value}</div>
+              <p className="dash-stat-card__note">{tile.note}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {teams.length === 0 ? (
         <EmptyPanel
