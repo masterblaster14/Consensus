@@ -1,0 +1,229 @@
+/* ===================================================================
+   Design tokens — the one place both halves of the app agree on colour.
+
+   Every rule in landing.css and dashboard.css reads from these variables,
+   so a single token change repaints the whole product in both themes.
+   `data-theme` is set on <html> by the inline script in index.html (before
+   first paint, so there is no flash) and then kept in sync by ThemeProvider.
+
+   Dark is the brand default.
+   =================================================================== */
+
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Backgrounds */
+  --bg: #020617; /* primary — very deep navy / near-black */
+  --bg-2: #03071c; /* secondary sunken sections */
+  --bg-3: #07113d; /* deep navy blocks */
+
+  /* Cards and raised fills */
+  --surface: #07113d;
+  --surface-2: #0b1a50;
+  --surface-3: #0e2160;
+
+  /* Borders — subtle blue-gray, never bright white */
+  --border: #1b2a63;
+  --border-2: #263a80;
+  --border-soft: #12204d;
+
+  /* Text */
+  --text: #f8fafc;
+  --text-2: #aab4cc;
+  --text-3: #7180a0;
+
+  /* Accent */
+  --accent: #ff4d0a;
+  --accent-2: #ff5a00;
+  --accent-text: #ff8a5c; /* accent as *text* needs to be lighter on navy */
+  --accent-soft: rgba(255, 77, 10, 0.14);
+  --accent-line: rgba(255, 90, 0, 0.42);
+  --on-accent: #ffffff;
+
+  /* Status */
+  --success: #2fd27a;
+  --success-soft: rgba(47, 210, 122, 0.14);
+  --warn: #ffb020;
+  --warn-soft: rgba(255, 176, 32, 0.14);
+  --danger: #ff5a3d; /* conflict / error — orange-red */
+  --danger-soft: rgba(255, 90, 61, 0.15);
+  --info: #6e9bff;
+  --info-soft: rgba(110, 155, 255, 0.14);
+
+  /* Elevation */
+  --shadow-sm: 0 1px 2px rgba(2, 6, 23, 0.6);
+  --shadow: 0 6px 22px rgba(2, 6, 23, 0.55);
+  --shadow-lg: 0 22px 60px rgba(2, 6, 23, 0.7);
+
+  /* Translucent nav backdrop for the landing top bar */
+  --nav-bg: rgba(3, 7, 28, 0.82);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f4f6fc;
+  --bg-2: #eaeef8;
+  --bg-3: #e2e8f6;
+
+  --surface: #ffffff;
+  --surface-2: #f2f5fc;
+  --surface-3: #e8edf9;
+
+  --border: #d7deee;
+  --border-2: #bcc7df;
+  --border-soft: #e6ebf6;
+
+  --text: #0a1332; /* deep navy, not pure black */
+  --text-2: #45527a;
+  --text-3: #6b7899;
+
+  --accent: #ff4d0a;
+  --accent-2: #e8410a;
+  --accent-text: #c8400a;
+  --accent-soft: #fff0e9;
+  --accent-line: #ffc9b0;
+  --on-accent: #ffffff;
+
+  --success: #12925c;
+  --success-soft: #e4f6ee;
+  --warn: #a65b00;
+  --warn-soft: #fff2df;
+  --danger: #d93a18;
+  --danger-soft: #fdece7;
+  --info: #2f5fd0;
+  --info-soft: #eaf0fd;
+
+  --shadow-sm: 0 1px 2px rgba(10, 19, 50, 0.06);
+  --shadow: 0 6px 22px rgba(10, 19, 50, 0.09);
+  --shadow-lg: 0 22px 60px rgba(10, 19, 50, 0.16);
+
+  --nav-bg: rgba(255, 255, 255, 0.86);
+}
+
+/* -------------------------------------------------------------------
+   The dashboard rail (sidebar) is the one surface that stays deep blue in
+   both themes — it reads as product chrome rather than page content, so it
+   gets fixed tokens instead of theme-swapped ones.
+   ------------------------------------------------------------------- */
+
+:root {
+  --rail: #07164f; /* header / nav rich dark blue */
+  --rail-2: #0b1f66;
+  --rail-3: #102a80;
+  --rail-border: #16265f;
+  --rail-text: #f8fafc;
+  --rail-text-2: #aab4cc;
+  --rail-text-3: #7180a0;
+
+  --radius-sm: 8px;
+  --radius: 11px;
+  --radius-lg: 16px;
+
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo,
+    Consolas, monospace;
+}
+
+html {
+  background: var(--bg);
+}
+
+/* -------------------------------------------------------------------
+   Shared primitive: the theme toggle. It is the only component rendered by
+   both halves, so it is the one class allowed outside `.page-root` and
+   `.app-shell`.
+   ------------------------------------------------------------------- */
+
+.theme-toggle {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  display: grid;
+  place-items: center;
+  position: relative;
+  overflow: hidden;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.theme-toggle:hover {
+  color: var(--accent-text);
+  border-color: var(--accent-line);
+  background: var(--surface-2);
+}
+
+.theme-toggle svg {
+  grid-area: 1 / 1;
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.22s ease;
+}
+
+.theme-toggle .tt-sun {
+  transform: rotate(0deg) scale(1);
+  opacity: 1;
+}
+
+.theme-toggle .tt-moon {
+  transform: rotate(-90deg) scale(0.4);
+  opacity: 0;
+}
+
+:root[data-theme='light'] .theme-toggle .tt-sun {
+  transform: rotate(90deg) scale(0.4);
+  opacity: 0;
+}
+
+:root[data-theme='light'] .theme-toggle .tt-moon {
+  transform: rotate(0deg) scale(1);
+  opacity: 1;
+}
+
+/* Spinner used by the GitHub button and any async action. */
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Session / connection state shared by both halves */
+.session-loading {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-2);
+  font-size: 0.9375rem;
+}
+.session-loading__dot,
+.live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-3);
+  display: inline-block;
+}
+.session-loading__dot {
+  background: var(--accent);
+  animation: session-pulse 1s ease-in-out infinite;
+}
+.live-dot.is-live {
+  background: var(--success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 25%, transparent);
+}
+.live-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+@keyframes session-pulse {
+  0%, 100% { transform: scale(0.8); opacity: 0.5; }
+  50% { transform: scale(1.15); opacity: 1; }
+}

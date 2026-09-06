@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 470" role="img"
+     aria-label="Two agents claim overlapping work; Consensus opens a conflict and writes the ruling to shared memory.">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#132745"/>
+      <stop offset="1" stop-color="#0B1729"/>
+    </linearGradient>
+    <linearGradient id="ember" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#F4551E"/>
+      <stop offset="1" stop-color="#FF8A4C"/>
+    </linearGradient>
+    <filter id="lift" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#050B15" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <rect width="640" height="470" rx="22" fill="url(#sky)"/>
+
+  <!-- faint grid -->
+  <g stroke="#FFFFFF" stroke-opacity="0.05">
+    <path d="M0 118H640M0 236H640M0 354H640"/>
+    <path d="M160 0V470M320 0V470M480 0V470"/>
+  </g>
+
+  <!-- window chrome -->
+  <g filter="url(#lift)">
+    <rect x="36" y="34" width="568" height="286" rx="14" fill="#0E1D33" stroke="#25405F"/>
+    <rect x="36" y="34" width="568" height="40" rx="14" fill="#152B48"/>
+    <rect x="36" y="60" width="568" height="14" fill="#152B48"/>
+    <circle cx="60" cy="54" r="4.5" fill="#F4551E"/>
+    <circle cx="76" cy="54" r="4.5" fill="#3E5875"/>
+    <circle cx="92" cy="54" r="4.5" fill="#3E5875"/>
+    <rect x="112" y="48" width="132" height="12" rx="6" fill="#25405F"/>
+
+    <!-- clash banner -->
+    <rect x="60" y="94" width="520" height="34" rx="8" fill="#F4551E" fill-opacity="0.14" stroke="#F4551E" stroke-opacity="0.5"/>
+    <circle cx="82" cy="111" r="7" fill="url(#ember)"/>
+    <path d="M82 107.5v4M82 114.5v.4" stroke="#0E1D33" stroke-width="1.8" stroke-linecap="round"/>
+    <rect x="100" y="105" width="150" height="9" rx="4.5" fill="#FFC9B2"/>
+    <rect x="100" y="105" width="150" height="9" rx="4.5" fill="url(#ember)" fill-opacity="0.85"/>
+    <rect x="482" y="103" width="80" height="16" rx="8" fill="#F4551E"/>
+
+    <!-- two opposing plans -->
+    <g>
+      <rect x="60" y="146" width="248" height="148" rx="10" fill="#152B48" stroke="#2B486A"/>
+      <circle cx="84" cy="172" r="11" fill="#2B486A"/>
+      <path d="M79 174l4 4 7-8" stroke="#7FE3C0" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="104" y="166" width="86" height="10" rx="5" fill="#4E7099"/>
+      <rect x="80" y="200" width="208" height="8" rx="4" fill="#31527A"/>
+      <rect x="80" y="218" width="176" height="8" rx="4" fill="#31527A"/>
+      <rect x="80" y="236" width="196" height="8" rx="4" fill="#31527A"/>
+      <rect x="80" y="264" width="72" height="16" rx="8" fill="#1E3A5C"/>
+      <rect x="160" y="264" width="94" height="16" rx="8" fill="#1E3A5C"/>
+    </g>
+
+    <g>
+      <rect x="332" y="146" width="248" height="148" rx="10" fill="#152B48" stroke="#2B486A"/>
+      <circle cx="356" cy="172" r="11" fill="#2B486A"/>
+      <path d="M351 174l4 4 7-8" stroke="#8FB8FF" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="376" y="166" width="72" height="10" rx="5" fill="#4E7099"/>
+      <rect x="352" y="200" width="208" height="8" rx="4" fill="#31527A"/>
+      <rect x="352" y="218" width="150" height="8" rx="4" fill="#31527A"/>
+      <rect x="352" y="236" width="188" height="8" rx="4" fill="#31527A"/>
+      <rect x="352" y="264" width="86" height="16" rx="8" fill="#1E3A5C"/>
+      <rect x="446" y="264" width="66" height="16" rx="8" fill="#1E3A5C"/>
+    </g>
+
+    <!-- the axis they disagree on -->
+    <path d="M308 220h24" stroke="#F4551E" stroke-width="2" stroke-dasharray="4 4"/>
+  </g>
+
+  <!-- funnel into shared memory -->
+  <path d="M184 320c0 44 136 30 136 62M456 320c0 44-136 30-136 62"
+        stroke="#F4551E" stroke-opacity="0.45" stroke-width="2" fill="none"/>
+
+  <g filter="url(#lift)">
+    <rect x="126" y="386" width="388" height="56" rx="12" fill="#152B48" stroke="#F4551E" stroke-opacity="0.55"/>
+    <rect x="146" y="404" width="20" height="20" rx="6" fill="url(#ember)"/>
+    <path d="M151 414l3.4 3.4 6.6-7" stroke="#0E1D33" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="180" y="401" width="112" height="10" rx="5" fill="#FFFFFF" fill-opacity="0.85"/>
+    <rect x="180" y="419" width="238" height="8" rx="4" fill="#4E7099"/>
+    <rect x="440" y="406" width="56" height="16" rx="8" fill="#1E3A5C"/>
+  </g>
+</svg>
